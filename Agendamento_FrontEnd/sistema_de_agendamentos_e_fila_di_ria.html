@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Agendamentos & Fila Diária - MVP</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Font Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Pulse Animation for Status Indicators */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.05); opacity: 0.4; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+        .pulse-active {
+            animation: pulse-ring 2s infinite ease-in-out;
+        }
+        /* Custom Scrollbar for list containers */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="h-full font-sans antialiased text-slate-800 flex flex-col">
+
+    <!-- TOP NAVIGATION BAR (PROFILE / VIEW SWITCHER) -->
+    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Brand Title -->
+                <div class="flex items-center space-x-3">
+                    <div class="bg-brand-600 text-white p-2 rounded-lg flex items-center justify-center">
+                        <i class="fa-solid fa-users-line text-lg"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg tracking-tight leading-tight">SistemaAgendamento</h1>
+                        <p class="text-xs text-slate-400">Sistema de Fila & Pacotes B2B</p>
+                    </div>
+                </div>
+
+                <!-- Profile Switcher Tabs -->
+                <div class="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
+                    <button id="btn-view-empresa" onclick="switchView('empresa')" class="flex items-center space-x-2 px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all bg-brand-600 text-white shadow-sm">
+                        <i class="fa-solid fa-store"></i>
+                        <span>Painel Empresa</span>
+                    </button>
+                    <button id="btn-view-cliente" onclick="switchView('cliente')" class="flex items-center space-x-2 px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all text-slate-300 hover:text-white">
+                        <i class="fa-solid fa-mobile-screen-button"></i>
+                        <span>Totem / Cliente</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- TOAST NOTIFICATION CONTAINER (SIMULATED WHATSAPP NOTIFICATIONS) -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-3 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+
+        <!-- ========================================== -->
+        <!-- 1. PAINEL DA EMPRESA (ESTABELECIMENTO)     -->
+        <!-- ========================================== -->
+        <section id="view-empresa" class="space-y-6">
+
+            <!-- Sub-Header & Action Controls -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-900">Gestão de Fila em Tempo Real</h2>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Acompanhe e avance a fila de atendimento diária com envio automático de avisos.</p>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 mr-2 pulse-active"></span>
+                        Fila Ativa Hoje
+                    </span>
+                    <button onclick="openModalServicosPacotes()" class="flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition">
+                        <i class="fa-solid fa-layer-group"></i>
+                        <span>Serviços & Pacotes</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Spotlight Cards: Em Atendimento & Próximo da Fila -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                <!-- Em Atendimento Card -->
+                <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col justify-between">
+                    <div class="p-5 border-b border-slate-100 bg-emerald-50/50 flex items-center justify-between">
+                        <div class="flex items-center space-x-2 text-emerald-700 font-bold text-sm tracking-wide uppercase">
+                            <i class="fa-solid fa-circle-play text-emerald-600"></i>
+                            <span>Em Atendimento Atual</span>
+                        </div>
+                        <span id="badge-atendimento-pos" class="bg-emerald-600 text-white text-xs font-bold px-2.5 py-1 rounded-lg">Posição --</span>
+                    </div>
+                    <div class="p-6 flex-1 flex flex-col justify-center" id="card-em-atendimento">
+                        <!-- Dynamic JS Content -->
+                    </div>
+                    <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
+                        <button id="btn-concluir" onclick="concluirAtendimentoAtual()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition shadow-sm flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fa-solid fa-check-circle"></i>
+                            <span>Concluir Atendimento</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Próximo da Fila Card -->
+                <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col justify-between">
+                    <div class="p-5 border-b border-slate-100 bg-sky-50/50 flex items-center justify-between">
+                        <div class="flex items-center space-x-2 text-sky-700 font-bold text-sm tracking-wide uppercase">
+                            <i class="fa-solid fa-user-clock text-sky-600"></i>
+                            <span>Próximo da Fila</span>
+                        </div>
+                        <span id="badge-proximo-pos" class="bg-sky-600 text-white text-xs font-bold px-2.5 py-1 rounded-lg">Posição --</span>
+                    </div>
+                    <div class="p-6 flex-1 flex flex-col justify-center" id="card-proximo-fila">
+                        <!-- Dynamic JS Content -->
+                    </div>
+                    <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
+                        <button id="btn-chamar-proximo" onclick="chamarProximoFila()" class="w-full sm:w-auto bg-sky-600 hover:bg-sky-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition shadow-sm flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fa-solid fa-bullhorn"></i>
+                            <span>Chamar Próximo (WhatsApp)</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Fila Completa Sequencial -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                <div class="p-5 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-base">Lista Sequencial da Fila do Dia</h3>
+                        <p class="text-xs text-slate-500">Histórico e ordem de chegada dos clientes no dia.</p>
+                    </div>
+                    <span id="total-fila-count" class="text-xs font-semibold bg-slate-100 text-slate-700 px-3 py-1 rounded-lg">0 Clientes</span>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold tracking-wider border-b border-slate-100">
+                                <th class="py-3.5 px-4 text-center">Pos.</th>
+                                <th class="py-3.5 px-4">Cliente / WhatsApp</th>
+                                <th class="py-3.5 px-4">Serviço ou Pacote</th>
+                                <th class="py-3.5 px-4 text-center">Status</th>
+                                <th class="py-3.5 px-4 text-right">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-fila-body" class="divide-y divide-slate-100">
+                            <!-- Rows injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </section>
+
+
+        <!-- ========================================== -->
+        <!-- 2. VISÃO DO CLIENTE (TOTEM / CELULAR)      -->
+        <!-- ========================================== -->
+        <section id="view-cliente" class="hidden max-w-md mx-auto space-y-6">
+
+            <!-- Check-in Card (Entrar na Fila) -->
+            <div id="cliente-form-card" class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-lg space-y-5">
+                <div class="text-center space-y-1">
+                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-brand-50 text-brand-600 mb-2">
+                        <i class="fa-solid fa-ticket-simple text-xl"></i>
+                    </div>
+                    <h2 class="text-xl font-bold text-slate-900">Entrar na Fila Ativa</h2>
+                    <p class="text-xs text-slate-500">Informe seus dados para garantir a sua posição e receber avisos no WhatsApp.</p>
+                </div>
+
+                <form id="form-entrar-fila" onsubmit="handleEntrarFila(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Seu Nome Completo *</label>
+                        <input type="text" id="input-nome" required placeholder="Ex: Lucas Andrade" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">WhatsApp *</label>
+                        <input type="tel" id="input-whatsapp" required placeholder="Ex: (82) 99999-8888" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Selecione o Serviço ou Pacote Ativo *</label>
+                        <select id="select-opcao-servico" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm bg-white">
+                            <!-- Populated via JS -->
+                        </select>
+                    </div>
+
+                    <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-3 px-4 rounded-xl shadow-md transition flex items-center justify-center space-x-2 text-sm">
+                        <i class="fa-solid fa-right-to-bracket"></i>
+                        <span>Confirmar Entrada na Fila</span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Ticket & Acompanhamento da Fila (Após Check-in) -->
+            <div id="cliente-status-card" class="hidden bg-white rounded-2xl border border-slate-200/80 shadow-lg overflow-hidden">
+                <div class="bg-gradient-to-r from-brand-600 to-emerald-700 p-6 text-white text-center relative">
+                    <button onclick="sairFilaCliente()" class="absolute top-4 right-4 text-emerald-200 hover:text-white text-xs font-semibold flex items-center space-x-1">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span>Sair</span>
+                    </button>
+                    <p class="text-xs font-semibold text-emerald-100 uppercase tracking-wider">Sua Senha / Posição</p>
+                    <div id="ticket-posicao" class="text-5xl font-black my-2">#00</div>
+                    <p id="ticket-nome" class="text-sm font-medium text-emerald-50">Carregando...</p>
+                </div>
+
+                <div class="p-6 space-y-6 text-center">
+                    
+                    <!-- Dynamic Alert Message -->
+                    <div id="status-mensagem-box" class="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1">
+                        <div class="flex items-center justify-center space-x-2 text-amber-700 font-bold text-sm">
+                            <i class="fa-solid fa-clock pulse-active"></i>
+                            <span id="status-titulo">Aguardando na fila...</span>
+                        </div>
+                        <p id="status-descricao" class="text-xs text-amber-800">Existe 1 pessoa na sua frente.</p>
+                    </div>
+
+                    <!-- Pessoas na Frente Counter -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                            <span class="block text-[11px] text-slate-500 font-semibold uppercase">Pessoas na Frente</span>
+                            <span id="count-pessoas-frente" class="text-2xl font-bold text-slate-800">0</span>
+                        </div>
+                        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                            <span class="block text-[11px] text-slate-500 font-semibold uppercase">Tempo Estimado</span>
+                            <span id="count-tempo-estimado" class="text-2xl font-bold text-slate-800">-- min</span>
+                        </div>
+                    </div>
+
+                    <!-- Detalhes do Serviço -->
+                    <div class="text-left bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-slate-500 font-medium">Serviço/Pacote:</span>
+                            <span id="ticket-servico-nome" class="font-bold text-slate-800">--</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-500 font-medium">WhatsApp registrado:</span>
+                            <span id="ticket-whatsapp" class="font-bold text-slate-800">--</span>
+                        </div>
+                    </div>
+
+                    <p class="text-[11px] text-slate-400">Você receberá uma mensagem via WhatsApp quando for a sua vez!</p>
+
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- ========================================== -->
+    <!-- MODAL: GESTÃO DE SERVIÇOS & PACOTES        -->
+    <!-- ========================================== -->
+    <div id="modal-servicos-pacotes" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            <!-- Header -->
+            <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-box text-brand-600"></i>
+                    <h3 class="font-bold text-slate-900 text-base">Gerenciar Serviços & Pacotes (Combos)</h3>
+                </div>
+                <button onclick="closeModalServicosPacotes()" class="text-slate-400 hover:text-slate-600 p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Body Content -->
+            <div class="p-6 overflow-y-auto space-y-6 flex-1 text-sm">
+                
+                <!-- Serviços Avulsos -->
+                <div>
+                    <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wider mb-3 text-brand-600">Serviços Avulsos</h4>
+                    <div id="modal-list-servicos" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <!-- Injected JS -->
+                    </div>
+                </div>
+
+                <hr class="border-slate-100">
+
+                <!-- Pacotes / Combos -->
+                <div>
+                    <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wider mb-3 text-emerald-600">Pacotes & Combos Ativos dos Clientes</h4>
+                    <div id="modal-list-pacotes" class="space-y-2">
+                        <!-- Injected JS -->
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Footer -->
+            <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button onclick="closeModalServicosPacotes()" class="bg-slate-800 text-white font-semibold text-xs px-4 py-2 rounded-xl hover:bg-slate-900 transition">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // ==========================================
+        // INITIAL MOCK DATA (ESTADO DA APLICAÇÃO)
+        // ==========================================
+        const state = {
+            currentView: 'empresa', // 'empresa' | 'cliente'
+            activeClienteId: null, // ID do cliente acompanhando na aba "Cliente"
+            
+            // Catálogo de Serviços
+            servicos: [
+                { id: 101, nome: "Corte de Cabelo Masculino", duracao_minutos: 30, preco: 45.00 },
+                { id: 102, nome: "Barba Completa com Toalha Quente", duracao_minutos: 25, preco: 35.00 },
+                { id: 103, nome: "Combo Cabelo + Barba", duracao_minutos: 50, preco: 70.00 }
+            ],
+
+            // Pacotes Comprados pelos Clientes
+            clientePacotes: [
+                { id: 201, cliente_id: 1, cliente_nome: "Carlos Eduardo", pacote_nome: "Pacote Mensal Barba (4 Sessões)", sessoes_restantes: 3, total_sessoes: 4, status: "ativo" },
+                { id: 202, cliente_id: 3, cliente_nome: "Mariana Costa", pacote_nome: "Combo Estética (5 Sessões)", sessoes_restantes: 1, total_sessoes: 5, status: "ativo" }
+            ],
+
+            // Fila de Agendamentos do Dia
+            agendamentos: [
+                {
+                    id: 1,
+                    posicao_fila: 1,
+                    cliente_nome: "Carlos Eduardo",
+                    cliente_telefone: "82991112233",
+                    servico_nome: "Pacote Mensal Barba (Sessão 2/4)",
+                    cliente_pacote_id: 201,
+                    status: "em_atendimento", // 'agendado' | 'em_atendimento' | 'concluido' | 'cancelado'
+                    duracao_minutos: 25
+                },
+                {
+                    id: 2,
+                    posicao_fila: 2,
+                    cliente_nome: "Roberto Santos",
+                    cliente_telefone: "82998887766",
+                    servico_nome: "Combo Cabelo + Barba",
+                    cliente_pacote_id: null,
+                    status: "agendado",
+                    duracao_minutos: 50
+                },
+                {
+                    id: 3,
+                    posicao_fila: 3,
+                    cliente_nome: "Fernanda Lima",
+                    cliente_telefone: "82993334455",
+                    servico_nome: "Corte de Cabelo Masculino",
+                    cliente_pacote_id: null,
+                    status: "agendado",
+                    duracao_minutos: 30
+                }
+            ]
+        };
+
+        // ==========================================
+        // INITIALIZATION
+        // ==========================================
+        window.onload = function () {
+            populateServicoOptionsSelect();
+            renderAll();
+        };
+
+        function renderAll() {
+            renderEmpresaView();
+            renderClienteView();
+            renderModalData();
+        }
+
+        // ==========================================
+        // VIEW SWITCHING LOGIC
+        // ==========================================
+        function switchView(viewName) {
+            state.currentView = viewName;
+            
+            const btnEmpresa = document.getElementById('btn-view-empresa');
+            const btnCliente = document.getElementById('btn-view-cliente');
+            const viewEmpresa = document.getElementById('view-empresa');
+            const viewCliente = document.getElementById('view-cliente');
+
+            if (viewName === 'empresa') {
+                viewEmpresa.classList.remove('hidden');
+                viewCliente.classList.add('hidden');
+                
+                btnEmpresa.className = "flex items-center space-x-2 px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all bg-brand-600 text-white shadow-sm";
+                btnCliente.className = "flex items-center space-x-2 px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all text-slate-300 hover:text-white";
+            } else {
+                viewEmpresa.classList.add('hidden');
+                viewCliente.classList.remove('hidden');
+
+                btnCliente.className = "flex items-center space-x-2 px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all bg-brand-600 text-white shadow-sm";
+                btnEmpresa.className = "flex items-center space-x-2 px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all text-slate-300 hover:text-white";
+            }
+
+            renderAll();
+        }
+
+        // ==========================================
+        // PAINEL DA EMPRESA RENDERING & ACTIONS
+        // ==========================================
+        function renderEmpresaView() {
+            const emAtendimento = state.agendamentos.find(a => a.status === 'em_atendimento');
+            const proximo = state.agendamentos.find(a => a.status === 'agendado');
+
+            // Render Em Atendimento Card
+            const cardAtendimento = document.getElementById('card-em-atendimento');
+            const badgeAtendimentoPos = document.getElementById('badge-atendimento-pos');
+            const btnConcluir = document.getElementById('btn-concluir');
+
+            if (emAtendimento) {
+                badgeAtendimentoPos.textContent = `Posição #${emAtendimento.posicao_fila}`;
+                btnConcluir.disabled = false;
+                cardAtendimento.innerHTML = `
+                    <div class="space-y-1">
+                        <div class="text-xs font-semibold text-slate-400">Cliente</div>
+                        <div class="text-xl font-bold text-slate-900">${emAtendimento.cliente_nome}</div>
+                        <div class="text-xs text-slate-500 flex items-center space-x-2">
+                            <span><i class="fa-brands fa-whatsapp text-emerald-500 mr-1"></i>${emAtendimento.cliente_telefone}</span>
+                            <span>•</span>
+                            <span class="font-medium text-slate-700">${emAtendimento.servico_nome}</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                badgeAtendimentoPos.textContent = `Livre`;
+                btnConcluir.disabled = true;
+                cardAtendimento.innerHTML = `
+                    <div class="text-center py-4 text-slate-400">
+                        <i class="fa-solid fa-mug-hot text-2xl mb-1"></i>
+                        <p class="text-xs font-medium">Nenhum cliente em atendimento no momento.</p>
+                    </div>
+                `;
+            }
+
+            // Render Próximo da Fila Card
+            const cardProximo = document.getElementById('card-proximo-fila');
+            const badgeProximoPos = document.getElementById('badge-proximo-pos');
+            const btnChamarProximo = document.getElementById('btn-chamar-proximo');
+
+            if (proximo) {
+                badgeProximoPos.textContent = `Posição #${proximo.posicao_fila}`;
+                btnChamarProximo.disabled = false;
+                cardProximo.innerHTML = `
+                    <div class="space-y-1">
+                        <div class="text-xs font-semibold text-slate-400">Próximo a ser chamado</div>
+                        <div class="text-xl font-bold text-slate-900">${proximo.cliente_nome}</div>
+                        <div class="text-xs text-slate-500 flex items-center space-x-2">
+                            <span><i class="fa-brands fa-whatsapp text-emerald-500 mr-1"></i>${proximo.cliente_telefone}</span>
+                            <span>•</span>
+                            <span class="font-medium text-slate-700">${proximo.servico_nome}</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                badgeProximoPos.textContent = `--`;
+                btnChamarProximo.disabled = true;
+                cardProximo.innerHTML = `
+                    <div class="text-center py-4 text-slate-400">
+                        <i class="fa-solid fa-check-double text-2xl mb-1"></i>
+                        <p class="text-xs font-medium">Não há clientes aguardando na fila.</p>
+                    </div>
+                `;
+            }
+
+            // Render Fila Table Rows
+            const tableBody = document.getElementById('table-fila-body');
+            document.getElementById('total-fila-count').textContent = `${state.agendamentos.length} Clientes`;
+            
+            tableBody.innerHTML = '';
+
+            state.agendamentos.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50/80 transition";
+
+                // Status Badge styling
+                let statusBadge = '';
+                if (item.status === 'em_atendimento') {
+                    statusBadge = `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 inline-flex items-center"><span class="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5 pulse-active"></span>Em Atendimento</span>`;
+                } else if (item.status === 'agendado') {
+                    statusBadge = `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">Aguardando</span>`;
+                } else if (item.status === 'concluido') {
+                    statusBadge = `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600">Concluído</span>`;
+                } else {
+                    statusBadge = `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700">Cancelado</span>`;
+                }
+
+                tr.innerHTML = `
+                    <td class="py-3.5 px-4 text-center font-bold text-slate-700">#${item.posicao_fila}</td>
+                    <td class="py-3.5 px-4">
+                        <div class="font-semibold text-slate-900">${item.cliente_nome}</div>
+                        <div class="text-xs text-slate-400"><i class="fa-brands fa-whatsapp text-emerald-500 mr-1"></i>${item.cliente_telefone}</div>
+                    </td>
+                    <td class="py-3.5 px-4">
+                        <div class="text-xs font-medium text-slate-700">${item.servico_nome}</div>
+                        ${item.cliente_pacote_id ? '<span class="text-[10px] bg-purple-100 text-purple-700 font-bold px-1.5 py-0.5 rounded">Uso de Pacote</span>' : ''}
+                    </td>
+                    <td class="py-3.5 px-4 text-center">${statusBadge}</td>
+                    <td class="py-3.5 px-4 text-right">
+                        ${item.status === 'agendado' ? `
+                            <button onclick="cancelarAgendamento(${item.id})" class="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 rounded hover:bg-rose-50 transition">
+                                Cancelar
+                            </button>
+                        ` : '--'}
+                    </td>
+                `;
+
+                tableBody.appendChild(tr);
+            });
+        }
+
+        // Chamar Próximo da Fila (Avança de 'agendado' para 'em_atendimento')
+        function chamarProximoFila() {
+            const proximo = state.agendamentos.find(a => a.status === 'agendado');
+            if (!proximo) return;
+
+            // Se já tiver alguém em atendimento, conclui automaticamente
+            const atual = state.agendamentos.find(a => a.status === 'em_atendimento');
+            if (atual) {
+                atual.status = 'concluido';
+            }
+
+            proximo.status = 'em_atendimento';
+
+            // Simula Notificação WhatsApp
+            const msg = `Olá *${proximo.cliente_nome}*! O atendimento anterior foi concluído. Você é o *PRÓXIMO DA FILA* para (${proximo.servico_nome}). Por favor, dirija-se ao local!`;
+            triggerWhatsAppNotification(proximo.cliente_telefone, msg);
+
+            renderAll();
+        }
+
+        // Concluir Atendimento Atual
+        function concluirAtendimentoAtual() {
+            const atual = state.agendamentos.find(a => a.status === 'em_atendimento');
+            if (!atual) return;
+
+            atual.status = 'concluido';
+
+            showToast('Sucesso', `Atendimento de ${atual.cliente_nome} concluído com sucesso!`, 'success');
+
+            // Verifica se existe um próximo cliente e avisa
+            const proximo = state.agendamentos.find(a => a.status === 'agendado');
+            if (proximo) {
+                const msg = `Olá *${proximo.cliente_nome}*! O atendimento anterior foi concluído. Prepara-se, você é o próximo da fila!`;
+                triggerWhatsAppNotification(proximo.cliente_telefone, msg);
+            }
+
+            renderAll();
+        }
+
+        function cancelarAgendamento(id) {
+            const item = state.agendamentos.find(a => a.id === id);
+            if (item) {
+                item.status = 'cancelado';
+                showToast('Cancelado', `Agendamento de ${item.cliente_nome} foi cancelado.`, 'error');
+                renderAll();
+            }
+        }
+
+        // ==========================================
+        // VISÃO DO CLIENTE RENDERING & ACTIONS
+        // ==========================================
+        function populateServicoOptionsSelect() {
+            const select = document.getElementById('select-opcao-servico');
+            select.innerHTML = '<option value="">-- Escolha um Serviço ou Pacote --</option>';
+
+            // Group Services
+            const groupServicos = document.createElement('optgroup');
+            groupServicos.label = "Serviços Avulsos";
+            state.servicos.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = `servico_${s.id}`;
+                opt.textContent = `${s.nome} - R$ ${s.preco.toFixed(2)}`;
+                groupServicos.appendChild(opt);
+            });
+            select.appendChild(groupServicos);
+
+            // Group Packages
+            const groupPacotes = document.createElement('optgroup');
+            groupPacotes.label = "Meus Pacotes Ativos";
+            state.clientePacotes.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = `pacote_${p.id}`;
+                opt.textContent = `${p.pacote_nome} (${p.sessoes_restantes} sessões restantes)`;
+                groupPacotes.appendChild(opt);
+            });
+            select.appendChild(groupPacotes);
+        }
+
+        function handleEntrarFila(e) {
+            e.preventDefault();
+            
+            const nome = document.getElementById('input-nome').value.trim();
+            const whatsapp = document.getElementById('input-whatsapp').value.trim();
+            const opcao = document.getElementById('select-opcao-servico').value;
+
+            if (!nome || !whatsapp || !opcao) return;
+
+            let servicoNome = "";
+            let clientePacoteId = null;
+
+            if (opcao.startsWith('servico_')) {
+                const servicoId = parseInt(opcao.replace('servico_', ''));
+                const s = state.servicos.find(item => item.id === servicoId);
+                servicoNome = s ? s.nome : "Serviço Avulso";
+            } else if (opcao.startsWith('pacote_')) {
+                clientePacoteId = parseInt(opcao.replace('pacote_', ''));
+                const p = state.clientePacotes.find(item => item.id === clientePacoteId);
+                
+                if (p) {
+                    if (p.sessoes_restantes <= 0) {
+                        showToast('Erro', 'Este pacote não possui sessões restantes!', 'error');
+                        return;
+                    }
+                    // Desconta sessão do pacote ativo
+                    p.sessoes_restantes -= 1;
+                    if (p.sessoes_restantes === 0) p.status = 'concluido';
+                    servicoNome = `${p.pacote_nome} (Sessão descontada)`;
+                }
+            }
+
+            // Calculando próxima posição
+            const proximaPosicao = state.agendamentos.length > 0 
+                ? Math.max(...state.agendamentos.map(a => a.posicao_fila)) + 1 
+                : 1;
+
+            const novoAgendamento = {
+                id: Date.now(),
+                posicao_fila: proximaPosicao,
+                cliente_nome: nome,
+                cliente_telefone: whatsapp,
+                servico_nome: servicoNome,
+                cliente_pacote_id: clientePacoteId,
+                status: 'agendado',
+                duracao_minutos: 30
+            };
+
+            state.agendamentos.push(novoAgendamento);
+            state.activeClienteId = novoAgendamento.id;
+
+            showToast('Fila Confirmada!', 'Você foi inserido na fila com sucesso.', 'success');
+
+            // Dispara notificação de boas-vindas via WhatsApp
+            const pessoasFrente = state.agendamentos.filter(a => a.status === 'agendado' && a.posicao_fila < proximaPosicao).length;
+            const msgStatus = pessoasFrente === 0 
+                ? 'Você é o primeiro da fila! Por favor, aguarde o início do seu atendimento.'
+                : `Você entrou na fila! Existem ${pessoasFrente} pessoa(s) na sua frente.`;
+
+            triggerWhatsAppNotification(whatsapp, `Olá *${nome}*! ${msgStatus}`);
+
+            // Reset Form & Render
+            document.getElementById('form-entrar-fila').reset();
+            renderAll();
+        }
+
+        function renderClienteView() {
+            const formCard = document.getElementById('cliente-form-card');
+            const statusCard = document.getElementById('cliente-status-card');
+
+            if (!state.activeClienteId) {
+                formCard.classList.remove('hidden');
+                statusCard.classList.add('hidden');
+                return;
+            }
+
+            const meuAgendamento = state.agendamentos.find(a => a.id === state.activeClienteId);
+
+            if (!meuAgendamento) {
+                state.activeClienteId = null;
+                formCard.classList.remove('hidden');
+                statusCard.classList.add('hidden');
+                return;
+            }
+
+            formCard.classList.add('hidden');
+            statusCard.classList.remove('hidden');
+
+            document.getElementById('ticket-posicao').textContent = `#${meuAgendamento.posicao_fila}`;
+            document.getElementById('ticket-nome').textContent = meuAgendamento.cliente_nome;
+            document.getElementById('ticket-servico-nome').textContent = meuAgendamento.servico_nome;
+            document.getElementById('ticket-whatsapp').textContent = meuAgendamento.cliente_telefone;
+
+            // Pessoas na frente
+            const pessoasNaFrente = state.agendamentos.filter(a => 
+                a.status === 'agendado' && a.posicao_fila < meuAgendamento.posicao_fila
+            ).length;
+
+            document.getElementById('count-pessoas-frente').textContent = pessoasNaFrente;
+            document.getElementById('count-tempo-estimado').textContent = `~${(pessoasNaFrente + 1) * 20} min`;
+
+            // Box Dynamic Messaging
+            const msgBox = document.getElementById('status-mensagem-box');
+            const titulo = document.getElementById('status-titulo');
+            const desc = document.getElementById('status-descricao');
+
+            if (meuAgendamento.status === 'em_atendimento') {
+                msgBox.className = "p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-1";
+                titulo.textContent = "É A SUA VEZ! EM ATENDIMENTO";
+                desc.textContent = "Por favor, dirija-se à cadeira / sala de atendimento.";
+            } else if (meuAgendamento.status === 'concluido') {
+                msgBox.className = "p-4 rounded-2xl bg-slate-100 border border-slate-200 text-slate-800 space-y-1";
+                titulo.textContent = "Atendimento Concluído";
+                desc.textContent = "Obrigado por utilizar nossos serviços! Tenha um ótimo dia.";
+            } else if (meuAgendamento.status === 'cancelado') {
+                msgBox.className = "p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 space-y-1";
+                titulo.textContent = "Agendamento Cancelado";
+                desc.textContent = "Este agendamento foi cancelado pelo estabelecimento.";
+            } else {
+                // 'agendado'
+                if (pessoasNaFrente === 0) {
+                    msgBox.className = "p-4 rounded-2xl bg-sky-50 border border-sky-200 text-sky-900 space-y-1";
+                    titulo.textContent = "Você é o Próximo!";
+                    desc.textContent = "Prepare-se! O estabelecimento chamará você a qualquer momento.";
+                } else {
+                    msgBox.className = "p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1";
+                    titulo.textContent = "Aguardando na Fila...";
+                    desc.textContent = `Existe(m) ${pessoasNaFrente} pessoa(s) na sua frente.`;
+                }
+            }
+        }
+
+        function sairFilaCliente() {
+            state.activeClienteId = null;
+            renderAll();
+        }
+
+        // ==========================================
+        // MODAL DATA RENDERING (SERVIÇOS & PACOTES)
+        // ==========================================
+        function openModalServicosPacotes() {
+            document.getElementById('modal-servicos-pacotes').classList.remove('hidden');
+            renderModalData();
+        }
+
+        function closeModalServicosPacotes() {
+            document.getElementById('modal-servicos-pacotes').classList.add('hidden');
+        }
+
+        function renderModalData() {
+            // Render Lista Serviços
+            const listServicos = document.getElementById('modal-list-servicos');
+            listServicos.innerHTML = '';
+            state.servicos.forEach(s => {
+                const card = document.createElement('div');
+                card.className = "p-3 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center";
+                card.innerHTML = `
+                    <div>
+                        <div class="font-bold text-slate-800">${s.nome}</div>
+                        <div class="text-xs text-slate-500">${s.duracao_minutos} min</div>
+                    </div>
+                    <div class="font-bold text-brand-600">R$ ${s.preco.toFixed(2)}</div>
+                `;
+                listServicos.appendChild(card);
+            });
+
+            // Render Lista Pacotes
+            const listPacotes = document.getElementById('modal-list-pacotes');
+            listPacotes.innerHTML = '';
+            state.clientePacotes.forEach(p => {
+                const card = document.createElement('div');
+                card.className = "p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between";
+                card.innerHTML = `
+                    <div>
+                        <div class="font-bold text-slate-800">${p.pacote_nome}</div>
+                        <div class="text-xs text-slate-500">Cliente: <span class="font-medium text-slate-700">${p.cliente_nome}</span></div>
+                    </div>
+                    <div class="text-right">
+                        <span class="inline-block px-2 py-0.5 text-xs font-bold bg-purple-100 text-purple-800 rounded-md">
+                            ${p.sessoes_restantes} / ${p.total_sessoes} Sessões Restantes
+                        </span>
+                    </div>
+                `;
+                listPacotes.appendChild(card);
+            });
+        }
+
+        // ==========================================
+        // SIMULATED WHATSAPP NOTIFICATIONS & TOASTS
+        // ==========================================
+        function triggerWhatsAppNotification(telefone, mensagem) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = "pointer-events-auto bg-slate-900 text-white p-4 rounded-2xl shadow-2xl border border-slate-800 flex items-start space-x-3 transition-all duration-300 transform translate-y-2 opacity-0";
+
+            toast.innerHTML = `
+                <div class="bg-emerald-500 text-white p-2 rounded-xl flex-shrink-0">
+                    <i class="fa-brands fa-whatsapp text-lg"></i>
+                </div>
+                <div class="flex-1 text-xs">
+                    <div class="flex items-center justify-between text-slate-400 font-semibold mb-1">
+                        <span>WhatsApp API Service</span>
+                        <span class="text-[10px]">Agora</span>
+                    </div>
+                    <div class="text-slate-300 leading-relaxed font-sans">${mensagem.replace(/\*(.*?)\*/g, '<strong>$1</strong>')}</div>
+                    <div class="mt-1 text-[10px] text-emerald-400 font-mono">Destino: ${telefone}</div>
+                </div>
+                <button onclick="this.parentElement.remove()" class="text-slate-500 hover:text-white text-xs p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            `;
+
+            container.appendChild(toast);
+
+            // Animate in
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            // Auto dismiss after 6s
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.classList.add('opacity-0', 'translate-y-2');
+                    setTimeout(() => toast.remove(), 300);
+                }
+            }, 6000);
+        }
+
+        function showToast(titulo, texto, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            let iconClass = "fa-info-circle text-sky-500";
+            if (type === 'success') iconClass = "fa-check-circle text-emerald-500";
+            if (type === 'error') iconClass = "fa-exclamation-triangle text-rose-500";
+
+            toast.className = "pointer-events-auto bg-white text-slate-800 p-3.5 rounded-xl shadow-lg border border-slate-200 flex items-center space-x-3 transition-all duration-300 transform translate-y-2 opacity-0 text-xs";
+
+            toast.innerHTML = `
+                <i class="fa-solid ${iconClass} text-base flex-shrink-0"></i>
+                <div class="flex-1">
+                    <div class="font-bold text-slate-900">${titulo}</div>
+                    <div class="text-slate-500">${texto}</div>
+                </div>
+                <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            `;
+
+            container.appendChild(toast);
+
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.classList.add('opacity-0');
+                    setTimeout(() => toast.remove(), 300);
+                }
+            }, 4000);
+        }
+    </script>
+</body>
+</html>

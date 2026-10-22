@@ -4,12 +4,14 @@ require('dotenv').config();
 
 const pool = require('./config/db');
 const clienteRoutes = require('./routes/clienteRoutes');
-
-const app = express();
-
 const servicoRoutes = require('./routes/servicoRoutes');
 const agendamentoRoutes = require('./routes/agendamentoRoutes');
 const pacoteRoutes = require('./routes/pacoteRoutes');
+
+// 1. IMPORTAR AS ROTAS DO WEBHOOK AQUI:
+const webhookRoutes = require('./routes/webhookRoutes');
+
+const app = express();
 
 app.use(cors());
 app.use(express.json());
@@ -24,11 +26,14 @@ app.get('/testar-conexao', async (req, res) => {
     }
 });
 
-// Registrando o módulo de clientes com o prefixo /clientes
+// Registrando os módulos das rotas
 app.use('/clientes', clienteRoutes);
 app.use('/servicos', servicoRoutes);
 app.use('/agendamentos', agendamentoRoutes); 
 app.use('/pacotes', pacoteRoutes);
+
+// 2. REGISTRAR A ROTA DO WEBHOOK AQUI:
+app.use('/api/webhook', webhookRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

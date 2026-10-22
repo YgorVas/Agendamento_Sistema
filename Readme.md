@@ -88,6 +88,7 @@ Agendamento_BackEnd/
      DB_USER=seu_usuario
      DB_PASSWORD=sua_senha
      DB_NAME=gestao_agendamentos
+     WEBHOOK_VERIFY_TOKEN=senha
      ```
 
 5. **Iniciar o Servidor**:

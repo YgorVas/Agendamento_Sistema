@@ -45,7 +45,20 @@ npm ci
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
+<<<<<<< HEAD
 Gere um token com o ID obtido no passo anterior. Troque `'1'` pelo ID real. O último comando imprime a linha que você vai colar no `.env`.
+=======
+4. **Configurar Variáveis de Ambiente**:
+   * Crie um arquivo `.env` na raiz do projeto com base no modelo `.env.example`:
+     ```env
+     PORT=3000
+     DB_HOST=localhost
+     DB_USER=seu_usuario
+     DB_PASSWORD=sua_senha
+     DB_NAME=gestao_agendamentos
+     WEBHOOK_VERIFY_TOKEN=senha
+     ```
+>>>>>>> ccff8e527ea5c8a1b854cdb1bca90d09b03b483b
 
 ```powershell
 $empresaId = '1'
@@ -90,6 +103,7 @@ O teste de conexão retorna `testeDoBanco: 2`. O cadastro retorna o ID do servi�
 
 > Em versões do PowerShell anteriores à 7.2, remova `-MaskInput` do comando `Read-Host` se o parâmetro estiver indisponível.
 
+<<<<<<< HEAD
 ### 5. Faça um atendimento de teste
 
 1. Abra o [painel local](http://127.0.0.1:3000/) no navegador. Informe o **ID da empresa** e o **token do operador** e clique em **Conectar**.
@@ -137,3 +151,7 @@ A API permite um atendimento em andamento por empresa e dia. O endpoint público
 | `500` em `/testar-conexao` | Verifique se o MySQL está rodando e revise `DB_HOST`, `DB_USER`, `DB_PASSWORD` e `DB_NAME`. |
 | A fila falha em uma base antiga | Confira se `agendamentos` tem as colunas `posicao_fila` e `data_atendimento`. Se estiverem ausentes, aplique a migração do primeiro passo. |
 | A lista de serviços está vazia | Cadastre um serviço com o token da empresa conectada e reconecte o painel. |
+=======
+* **.gitignore**: O arquivo `.env` (contendo credenciais do MySQL) e a pasta `node_modules/` **não são versionados** por questões de segurança e otimização de repositório.
+* **Variáveis de Ambiente**: Todas as credenciais de banco e serviços de mensageria usam a biblioteca `dotenv`.
+>>>>>>> ccff8e527ea5c8a1b854cdb1bca90d09b03b483b

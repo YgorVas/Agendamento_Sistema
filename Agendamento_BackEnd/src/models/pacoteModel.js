@@ -7,7 +7,7 @@ const PacoteModel = {
             INSERT INTO pacotes (empresa_id, nome, descricao, total_sessoes, preco_total, dias_validade)
             VALUES (?, ?, ?, ?, ?, ?)
         `;
-        const [resultado] = await pool.query(query, [
+        const [resultado] = await pool.execute(query, [
             empresa_id, 
             nome, 
             descricao || null, 
@@ -25,7 +25,7 @@ const PacoteModel = {
             FROM pacotes
             WHERE empresa_id = ?
         `;
-        const [linhas] = await pool.query(query, [empresa_id]);
+        const [linhas] = await pool.execute(query, [empresa_id]);
         return linhas;
     },
 
@@ -36,7 +36,7 @@ const PacoteModel = {
             INSERT INTO cliente_pacotes (cliente_id, pacote_id, sessoes_restantes, data_validade, status)
             VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY), 'ativo')
         `;
-        const [resultado] = await pool.query(query, [
+        const [resultado] = await pool.execute(query, [
             cliente_id, 
             pacote_id, 
             sessoes_totais, 
@@ -46,37 +46,26 @@ const PacoteModel = {
     },
 
     // 4. Listar pacotes ativos de um cliente
-    listarPacotesDoCliente: async (cliente_id) => {
+    listarPacotesDoCliente: async (cliente_id, empresaId) => {
         const query = `
             SELECT 
                 cp.id, 
-                p.nome AS pacote_nome, 
+                p.nome AS pacote_nome,
+                p.total_sessoes,
                 cp.sessoes_restantes, 
                 cp.data_compra, 
                 cp.data_validade, 
-                cp.status
+                CASE WHEN cp.status = 'ativo' AND cp.data_validade < CURDATE()
+                     THEN 'expirado' ELSE cp.status END AS status
             FROM cliente_pacotes cp
             JOIN pacotes p ON cp.pacote_id = p.id
-            WHERE cp.cliente_id = ?
+            JOIN clientes c ON c.id = cp.cliente_id AND c.empresa_id = p.empresa_id
+            WHERE cp.cliente_id = ? AND c.empresa_id = ?
         `;
-        const [linhas] = await pool.query(query, [cliente_id]);
+        const [linhas] = await pool.execute(query, [cliente_id, empresaId]);
         return linhas;
     },
 
-    // 5. Descontar uma sessão do pacote do cliente (quando ele realiza o atendimento)
-    descontarSessao: async (cliente_pacote_id) => {
-        const query = `
-            UPDATE cliente_pacotes 
-            SET sessoes_restantes = sessoes_restantes - 1,
-                status = CASE 
-                    WHEN (sessoes_restantes - 1) <= 0 THEN 'concluido' 
-                    ELSE status 
-                END
-            WHERE id = ? AND sessoes_restantes > 0 AND status = 'ativo'
-        `;
-        const [resultado] = await pool.query(query, [cliente_pacote_id]);
-        return resultado.affectedRows > 0;
-    }
 };
 
 module.exports = PacoteModel;

@@ -4,17 +4,17 @@ const clienteController = {
     // POST /clientes - Cadastrar um novo cliente
     cadastrarCliente: async (req, res) => {
         try {
-            const { empresa_id, nome, telefone_whatsapp, email, observacoes } = req.body;
+            const { nome, telefone_whatsapp, email, observacoes } = req.body;
 
             // Validação simples dos campos obrigatórios
-            if (!empresa_id || !nome || !telefone_whatsapp) {
+            if (!nome || !telefone_whatsapp) {
                 return res.status(400).json({ 
-                    erro: 'Os campos empresa_id, nome e telefone_whatsapp são obrigatórios.' 
+                    erro: 'Os campos nome e telefone_whatsapp são obrigatórios.'
                 });
             }
 
             const novoId = await ClienteModel.criar(
-                empresa_id, 
+                req.empresaId,
                 nome, 
                 telefone_whatsapp, 
                 email || null, 
@@ -34,11 +34,8 @@ const clienteController = {
     // GET /clientes/empresa/:empresa_id - Listar clientes de uma empresa
     listarClientes: async (req, res) => {
         try {
-            const { empresa_id } = req.params;
+            const empresa_id = req.empresaId;
 
-            if (!empresa_id) {
-                return res.status(400).json({ erro: 'O ID da empresa é obrigatório.' });
-            }
 
             const clientes = await ClienteModel.listarPorEmpresa(empresa_id);
             return res.status(200).json(clientes);

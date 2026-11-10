@@ -5,16 +5,16 @@ const pacoteController = {
     // Criar o modelo de pacote da empresa
     cadastrarModeloPacote: async (req, res) => {
         try {
-            const { empresa_id, nome, descricao, total_sessoes, preco_total, dias_validade } = req.body;
+            const { nome, descricao, total_sessoes, preco_total, dias_validade } = req.body;
 
-            if (!empresa_id || !nome || !total_sessoes || !preco_total) {
+            if (!nome || !total_sessoes || !preco_total) {
                 return res.status(400).json({ 
-                    erro: 'Os campos empresa_id, nome, total_sessoes e preco_total são obrigatórios.' 
+                    erro: 'Os campos nome, total_sessoes e preco_total são obrigatórios.'
                 });
             }
 
             const novoId = await PacoteModel.criarModeloPacote(
-                empresa_id, 
+                req.empresaId,
                 nome, 
                 descricao, 
                 total_sessoes, 
@@ -35,7 +35,7 @@ const pacoteController = {
     // Listar modelos de pacotes de uma empresa
     listarModelos: async (req, res) => {
         try {
-            const { empresa_id } = req.params;
+            const empresa_id = req.empresaId;
             const pacotes = await PacoteModel.listarModelosPorEmpresa(empresa_id);
             return res.status(200).json(pacotes);
         } catch (error) {
@@ -49,18 +49,20 @@ const pacoteController = {
         try {
             const { cliente_id, pacote_id } = req.body;
 
-            if (!cliente_id || !pacote_id) {
+            if (![cliente_id, pacote_id].every(id => ['number', 'string'].includes(typeof id) && /^[1-9][0-9]*$/.test(String(id)))) {
                 return res.status(400).json({ erro: 'Os campos cliente_id e pacote_id são obrigatórios.' });
             }
 
             // Busca as informações do pacote (total de sessões e dias de validade)
-            const [pacotes] = await pool.query(
-                'SELECT total_sessoes, dias_validade FROM pacotes WHERE id = ?', 
-                [pacote_id]
+            const [pacotes] = await pool.execute(
+                `SELECT p.total_sessoes, p.dias_validade FROM pacotes p
+                 JOIN clientes c ON c.empresa_id = p.empresa_id
+                 WHERE p.id = ? AND c.id = ? AND p.empresa_id = ?`,
+                [pacote_id, cliente_id, req.empresaId]
             );
 
             if (pacotes.length === 0) {
-                return res.status(404).json({ erro: 'Pacote não encontrado.' });
+                return res.status(404).json({ erro: 'Cliente ou pacote não encontrado.' });
             }
 
             const { total_sessoes, dias_validade } = pacotes[0];
@@ -89,7 +91,7 @@ const pacoteController = {
     listarPacotesCliente: async (req, res) => {
         try {
             const { cliente_id } = req.params;
-            const pacotesCliente = await PacoteModel.listarPacotesDoCliente(cliente_id);
+            const pacotesCliente = await PacoteModel.listarPacotesDoCliente(cliente_id, req.empresaId);
             return res.status(200).json(pacotesCliente);
         } catch (error) {
             console.error('Erro ao listar pacotes do cliente:', error);

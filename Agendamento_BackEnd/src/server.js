@@ -1,5 +1,5 @@
 const express = require('express');
-const cors = require('cors');
+const path = require('node:path');
 require('dotenv').config();
 
 const pool = require('./config/db');
@@ -13,16 +13,19 @@ const webhookRoutes = require('./routes/webhookRoutes');
 
 const app = express();
 
-app.use(cors());
 app.use(express.json());
 
+app.get('/', (req, res) => {
+    res.sendFile(path.resolve(__dirname, '../../Agendamento_FrontEnd/sistema_de_agendamentos_e_fila_di_ria.html'));
+});
+
 // Rota de teste do banco
-app.get('/testar-conexao', async (req, res) => {
+app.get('/testar-conexao', require('./middleware/empresa'), async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT 1 + 1 AS resultado');
         res.json({ mensagem: 'Conexão com o MySQL bem-sucedida!', testeDoBanco: rows[0].resultado });
     } catch (error) {
-        res.status(500).json({ erro: 'Erro ao conectar ao banco de dados', detalhes: error.message });
+        res.status(500).json({ erro: 'Erro ao conectar ao banco de dados' });
     }
 });
 
@@ -36,6 +39,7 @@ app.use('/pacotes', pacoteRoutes);
 app.use('/api/webhook', webhookRoutes);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const HOST = process.env.HOST || '127.0.0.1';
+app.listen(PORT, HOST, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
 });

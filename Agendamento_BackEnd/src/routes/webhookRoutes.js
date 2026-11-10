@@ -4,7 +4,7 @@ const router = express.Router();
 // Rota de validação do Webhook da Meta (GET)
 router.get('/whatsapp', (req, res) => {
     // Chave secreta definida por você (pode colocar no .env)
-    const VERIFY_TOKEN = process.env.WEBHOOK_VERIFY_TOKEN || 'token_sistema_api';
+    const VERIFY_TOKEN = process.env.WEBHOOK_VERIFY_TOKEN;
 
     // Parâmetros enviados pela Meta no momento do teste
     const mode = req.query['hub.mode'];

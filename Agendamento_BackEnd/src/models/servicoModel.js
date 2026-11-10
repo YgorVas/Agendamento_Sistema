@@ -7,7 +7,7 @@ const ServicoModel = {
             INSERT INTO servicos (empresa_id, nome, descricao, duracao_minutos, preco)
             VALUES (?, ?, ?, ?, ?)
         `;
-        const [resultado] = await pool.query(query, [empresa_id, nome, descricao, duracao_minutos, preco]);
+        const [resultado] = await pool.execute(query, [empresa_id, nome, descricao, duracao_minutos, preco]);
         return resultado.insertId;
     },
 
@@ -19,7 +19,7 @@ const ServicoModel = {
             WHERE empresa_id = ?
             ORDER BY nome ASC
         `;
-        const [linhas] = await pool.query(query, [empresa_id]);
+        const [linhas] = await pool.execute(query, [empresa_id]);
         return linhas;
     }
 };

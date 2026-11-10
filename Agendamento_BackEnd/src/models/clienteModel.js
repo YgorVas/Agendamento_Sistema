@@ -7,7 +7,7 @@ const ClienteModel = {
             INSERT INTO clientes (empresa_id, nome, telefone_whatsapp, email, observacoes)
             VALUES (?, ?, ?, ?, ?)
         `;
-        const [resultado] = await pool.query(query, [empresa_id, nome, telefone_whatsapp, email, observacoes]);
+        const [resultado] = await pool.execute(query, [empresa_id, nome, telefone_whatsapp, email, observacoes]);
         return resultado.insertId;
     },
 
@@ -19,7 +19,7 @@ const ClienteModel = {
             WHERE empresa_id = ?
             ORDER BY nome ASC
         `;
-        const [linhas] = await pool.query(query, [empresa_id]);
+        const [linhas] = await pool.execute(query, [empresa_id]);
         return linhas;
     },
 
@@ -30,7 +30,7 @@ const ClienteModel = {
             FROM clientes 
             WHERE id = ? AND empresa_id = ?
         `;
-        const [linhas] = await pool.query(query, [id, empresa_id]);
+        const [linhas] = await pool.execute(query, [id, empresa_id]);
         return linhas[0];
     }
 };

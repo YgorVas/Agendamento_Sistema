@@ -1,81 +1,112 @@
 const pool = require('../config/db');
 
+async function transacaoDaEmpresa(empresaId, executar) {
+    const conexao = await pool.getConnection();
+    try {
+        await conexao.beginTransaction();
+        // Serializa entradas e mudanças de status da mesma empresa.
+        const [empresas] = await conexao.execute(
+            'SELECT id FROM empresas WHERE id = ? FOR UPDATE', [empresaId]
+        );
+        const resultado = empresas.length ? await executar(conexao) : { erro: 'empresa' };
+        await conexao.commit();
+        return resultado;
+    } catch (erro) {
+        await conexao.rollback();
+        throw erro;
+    } finally {
+        conexao.release();
+    }
+}
+
 const AgendamentoModel = {
-    // 1. Obter a próxima posição disponível na fila para a data informada
-    obterProximaPosicao: async (empresa_id, data_atendimento) => {
-        const query = `
-            SELECT COALESCE(MAX(posicao_fila), 0) + 1 AS proxima_posicao 
-            FROM agendamentos 
-            WHERE empresa_id = ? AND data_atendimento = ? AND status != 'cancelado'
-        `;
-        const [linhas] = await pool.query(query, [empresa_id, data_atendimento]);
-        return linhas[0].proxima_posicao;
-    },
+    entrarNaFila: (empresaId, clienteId, servicoId, pacoteId, data) =>
+        transacaoDaEmpresa(empresaId, async (conexao) => {
+            const [cadastro] = await conexao.execute(
+                `SELECT c.id FROM clientes c JOIN servicos s ON s.empresa_id = c.empresa_id
+                 WHERE c.empresa_id = ? AND c.id = ? AND s.id = ? FOR SHARE`,
+                [empresaId, clienteId, servicoId]
+            );
+            if (!cadastro.length) return { erro: 'cadastro' };
 
-    // 2. Entrar na fila do dia
-    entrarNaFila: async (empresa_id, cliente_id, servico_id, cliente_pacote_id, data_atendimento, posicao_fila) => {
-        const query = `
-            INSERT INTO agendamentos (empresa_id, cliente_id, servico_id, cliente_pacote_id, posicao_fila, data_atendimento, data_hora, status)
-            VALUES (?, ?, ?, ?, ?, ?, NOW(), 'agendado')
-        `;
-        const [resultado] = await pool.query(query, [
-            empresa_id, 
-            cliente_id, 
-            servico_id, 
-            cliente_pacote_id || null, 
-            posicao_fila, 
-            data_atendimento
-        ]);
-        return resultado.insertId;
-    },
+            if (pacoteId) {
+                const [debito] = await conexao.execute(
+                    `UPDATE cliente_pacotes SET
+                         status = IF(sessoes_restantes = 1, 'concluido', 'ativo'),
+                         sessoes_restantes = sessoes_restantes - 1
+                     WHERE id = ? AND cliente_id = ? AND status = 'ativo' AND sessoes_restantes > 0
+                       AND data_validade >= GREATEST(CURDATE(), CAST(? AS DATE))
+                       AND pacote_id IN (SELECT id FROM pacotes WHERE empresa_id = ?)`,
+                    [pacoteId, clienteId, data, empresaId]
+                );
+                if (!debito.affectedRows) return { erro: 'pacote' };
+            }
 
-    // 3. Obter a quantidade de pessoas que estão na frente de um cliente
-    obterPessoasNaFrente: async (empresa_id, data_atendimento, posicao_fila) => {
-        const query = `
-            SELECT COUNT(*) AS pessoas_na_frente
-            FROM agendamentos
-            WHERE empresa_id = ? 
-              AND data_atendimento = ? 
-              AND posicao_fila < ?
-              AND status = 'agendado'
-        `;
-        const [linhas] = await pool.query(query, [empresa_id, data_atendimento, posicao_fila]);
-        return linhas[0].pessoas_na_frente;
-    },
-
-    
+            const [fila] = await conexao.execute(
+                `SELECT COALESCE(MAX(posicao_fila), 0) + 1 AS posicao,
+                        COUNT(CASE WHEN status IN ('agendado', 'confirmado') THEN 1 END) AS pessoas
+                 FROM agendamentos WHERE empresa_id = ? AND data_atendimento = ? AND posicao_fila IS NOT NULL`,
+                [empresaId, data]
+            );
+            const { posicao, pessoas } = fila[0];
+            const [novo] = await conexao.execute(
+                `INSERT INTO agendamentos
+                    (empresa_id, cliente_id, servico_id, cliente_pacote_id, posicao_fila, data_atendimento, data_hora, status)
+                 VALUES (?, ?, ?, ?, ?, ?, NOW(), 'agendado')`,
+                [empresaId, clienteId, servicoId, pacoteId, posicao, data]
+            );
+            return { id: novo.insertId, posicao, pessoas };
+        }),
 
     // 4. Listar a fila do dia ordenada pela posição
     listarFilaDoDia: async (empresa_id, data_atendimento) => {
         const query = `
             SELECT 
                 a.id, 
-                a.posicao_fila, 
+                a.posicao_fila,
+                a.cliente_pacote_id,
                 a.status, 
                 c.nome AS cliente_nome, 
                 c.telefone_whatsapp AS cliente_telefone,
                 s.nome AS servico_nome,
                 s.duracao_minutos
             FROM agendamentos a
-            JOIN clientes c ON a.cliente_id = c.id
-            JOIN servicos s ON a.servico_id = s.id
-            WHERE a.empresa_id = ? AND a.data_atendimento = ? AND a.status != 'cancelado'
-            ORDER BY a.posicao_fila ASC
+            JOIN clientes c ON a.cliente_id = c.id AND c.empresa_id = a.empresa_id
+            LEFT JOIN servicos s ON a.servico_id = s.id AND s.empresa_id = a.empresa_id
+            WHERE a.empresa_id = ? AND a.data_atendimento = ? AND a.posicao_fila IS NOT NULL AND a.status != 'cancelado'
+            ORDER BY a.posicao_fila ASC, a.id ASC
         `;
-        const [linhas] = await pool.query(query, [empresa_id, data_atendimento]);
+        const [linhas] = await pool.execute(query, [empresa_id, data_atendimento]);
         return linhas;
     },
 
-    // Atualizar o status de um agendamento (ex: 'concluido', 'em_atendimento', 'cancelado')
-    atualizarStatus: async (id, status) => {
-        const query = `
-            UPDATE agendamentos 
-            SET status = ? 
-            WHERE id = ?
-        `;
-        const [resultado] = await pool.query(query, [status, id]);
-        return resultado.affectedRows > 0;
-    },
+    atualizarStatus: (empresaId, id, status) =>
+        transacaoDaEmpresa(empresaId, async (conexao) => {
+            const [registros] = await conexao.execute(
+                `SELECT status, DATE_FORMAT(data_atendimento, '%Y-%m-%d') AS data
+                 FROM agendamentos WHERE id = ? AND empresa_id = ?`,
+                [id, empresaId]
+            );
+            const atual = registros[0];
+            if (!atual) return { erro: 'registro' };
+            if (atual.status === status) return { mudou: false };
+            if (atual.status === 'concluido' || atual.status === 'cancelado' || status === 'agendado') {
+                return { erro: 'transicao' };
+            }
+            if (status === 'confirmado') {
+                const [emAtendimento] = await conexao.execute(
+                    `SELECT id FROM agendamentos
+                     WHERE empresa_id = ? AND data_atendimento = ? AND status = 'confirmado'
+                       AND posicao_fila IS NOT NULL LIMIT 1`,
+                    [empresaId, atual.data]
+                );
+                if (emAtendimento.length) return { erro: 'atendimento' };
+            }
+            await conexao.execute(
+                'UPDATE agendamentos SET status = ? WHERE id = ? AND empresa_id = ?', [status, id, empresaId]
+            );
+            return { mudou: true, data: atual.data };
+        }),
 
     // Buscar o próximo cliente da fila do dia (menor posição com status 'agendado')
     obterProximoDaFila: async (empresa_id, data_atendimento) => {
@@ -87,32 +118,18 @@ const AgendamentoModel = {
                     c.telefone_whatsapp AS cliente_telefone,
                     s.nome AS servico_nome
                 FROM agendamentos a
-                JOIN clientes c ON a.cliente_id = c.id
-                JOIN servicos s ON a.servico_id = s.id -- CORRIGIDO AQUI (sem ç)
+                JOIN clientes c ON a.cliente_id = c.id AND c.empresa_id = a.empresa_id
+                LEFT JOIN servicos s ON a.servico_id = s.id AND s.empresa_id = a.empresa_id
                 WHERE a.empresa_id = ? 
                 AND a.data_atendimento = ? 
-                AND a.status = 'agendado'
-                ORDER BY a.posicao_fila ASC
+                AND a.posicao_fila IS NOT NULL AND a.status = 'agendado'
+                ORDER BY a.posicao_fila ASC, a.id ASC
                 LIMIT 1
             `;
-            const [linhas] = await pool.query(query, [empresa_id, data_atendimento]);
+            const [linhas] = await pool.execute(query, [empresa_id, data_atendimento]);
             return linhas[0] || null;
     },
 
-    // Descontar uma sessão do pacote ativo do cliente
-    descontarSessaoPacote: async (cliente_pacote_id) => {
-        const query = `
-            UPDATE cliente_pacotes 
-            SET sessoes_restantes = sessoes_restantes - 1,
-                status = CASE 
-                    WHEN (sessoes_restantes - 1) <= 0 THEN 'concluido' 
-                    ELSE status 
-                END
-            WHERE id = ? AND sessoes_restantes > 0 AND status = 'ativo'
-        `;
-        const [resultado] = await pool.query(query, [cliente_pacote_id]);
-        return resultado.affectedRows > 0;
-    },
 };
 
 module.exports = AgendamentoModel;

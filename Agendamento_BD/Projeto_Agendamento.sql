@@ -84,6 +84,8 @@ CREATE TABLE agendamentos (
     cliente_id INT NOT NULL,
     servico_id INT,
     cliente_pacote_id INT DEFAULT NULL, -- Preenchido se for uso de um pacote/combo
+    posicao_fila INT NULL,
+    data_atendimento DATE NOT NULL,
     data_hora DATETIME NOT NULL,
     status ENUM('agendado', 'confirmado', 'concluido', 'cancelado') DEFAULT 'agendado',
     lembrete_enviado BOOLEAN DEFAULT FALSE,
@@ -92,7 +94,8 @@ CREATE TABLE agendamentos (
     FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE,
     FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE,
     FOREIGN KEY (servico_id) REFERENCES servicos(id) ON DELETE SET NULL,
-    FOREIGN KEY (cliente_pacote_id) REFERENCES cliente_pacotes(id) ON DELETE SET NULL
+    FOREIGN KEY (cliente_pacote_id) REFERENCES cliente_pacotes(id) ON DELETE SET NULL,
+    INDEX idx_fila_empresa_dia (empresa_id, data_atendimento, posicao_fila)
 ) ENGINE=InnoDB;
 
 -- --------------------------------------------------------

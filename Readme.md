@@ -11,7 +11,7 @@ Você precisa de **Node.js 18 ou superior**, **MySQL 8 em execução** e uma con
 - **Instalação nova.** Abra e execute o arquivo inteiro [Projeto_Agendamento.sql](Agendamento_BD/Projeto_Agendamento.sql). Ele cria o banco `gestao_agendamentos` e as tabelas.
 - **Base existente.** Faça um backup e aplique [001_fila_diaria.sql](Agendamento_BD/migrations/001_fila_diaria.sql) e [002_ticket_publico.sql](Agendamento_BD/migrations/002_ticket_publico.sql), nessa ordem, antes de atualizar o servidor. Ambas podem ser reaplicadas. A primeira migra a fila e preserva os registros legados. A segunda habilita o ticket público para novas entradas.
 
-Configure o backend com uma conta MySQL que tenha `SELECT`, `INSERT` e `UPDATE` em `gestao_agendamentos`. A conta usada para criar ou atualizar o esquema precisa de permissões adicionais de administração do banco.
+Configure o backend com uma conta MySQL dedicada. Depois de criar a conta, ajuste o usuário e o host em [PERMISSÃO.sql](Agendamento_BD/PERMISSÃO.sql) e execute o script com uma conta administrativa. Ele concede `SELECT`, `INSERT` e `UPDATE` em `gestao_agendamentos`. Para uma conta que já tenha privilégios adicionais, revise as concessões existentes. A conta usada para criar ou atualizar o esquema precisa de permissões adicionais de administração do banco.
 
 ### 2. Identifique a empresa que vai usar o painel
 
@@ -93,21 +93,36 @@ O teste de conexão retorna `testeDoBanco: 2`. O cadastro retorna o ID do servi�
 ### 5. Faça um atendimento de teste
 
 1. Abra o [painel local](http://127.0.0.1:3000/) no navegador. Informe o **ID da empresa** e o **token do operador** e clique em **Conectar**.
-2. Na aba **Atender cliente**, selecione um cliente existente ou escolha **Cadastrar novo cliente** e preencha nome e telefone.
+2. Abra **Registrar cliente no balcão**, selecione um cliente existente ou escolha **Cadastrar novo cliente** e preencha nome e telefone.
 3. Selecione o serviço **Atendimento**, deixe o pacote como **Sem pacote** e clique em **Confirmar Entrada na Fila**. A tela deve mostrar a senha do cliente.
-4. Na aba **Painel Empresa**, confirme que o cliente apareceu. Clique em **Chamar Próximo** e depois em **Concluir Atendimento**.
+4. Confira se o cliente apareceu na fila do painel. Clique em **Chamar Próximo** e depois em **Concluir Atendimento**.
 
-O painel mostra a fila do dia no fuso de São Paulo e a atualiza a cada 10 segundos. As duas abas usam a mesma credencial de operador e são destinadas à equipe. Para disponibilizar o painel em outra máquina, configure `HOST` e sirva a aplicação por HTTPS.
+O painel mostra a fila do dia no fuso de São Paulo e a atualiza a cada 10 segundos. Para disponibilizar o sistema em outra máquina, configure `HOST` e sirva a aplicação por HTTPS.
 
 ## Como testar um pacote
 
 1. Crie um modelo com `POST /pacotes`. Use, por exemplo, `{"nome":"Pacote de teste","total_sessoes":3,"preco_total":90,"dias_validade":30}`.
 2. Consulte `GET /clientes/empresa/:empresa_id` para obter o ID de um cliente cadastrado. Atribua o modelo com `POST /pacotes/vender`, enviando `cliente_id` e o `pacote_id` retornado no passo anterior.
-3. Na aba **Atender cliente**, selecione esse cliente, o serviço e o pacote. Ao confirmar a entrada, a API desconta uma sessão. Consulte o saldo restante em `GET /pacotes/cliente/:cliente_id`.
+3. Em **Registrar cliente no balcão**, selecione esse cliente, o serviço e o pacote. Ao confirmar a entrada, a API desconta uma sessão. Consulte o saldo restante em `GET /pacotes/cliente/:cliente_id`.
 
-## Link do cliente
+Para atribuir o pacote pelo PowerShell, use `$api` e `$cabecalhos` do passo 4 e substitua os IDs pelos valores retornados pela API.
 
-Após inserir o cliente na fila, use **Abrir link do cliente** no painel para obter a URL compartilhável. Use o endereço HTTPS do sistema ao compartilhar o link fora da máquina local. Quem tem o link pode consultar a posição e o status daquele ticket. A consulta não inclui nome, telefone ou a lista da fila.
+```powershell
+$clienteId = 7
+$pacoteId = 3
+$corpo = @{ cliente_id = $clienteId; pacote_id = $pacoteId } | ConvertTo-Json
+
+Invoke-RestMethod -Method Post -Uri "$api/pacotes/vender" -Headers $cabecalhos `
+  -ContentType 'application/json' -Body $corpo
+```
+
+## Entrada pública e acompanhamento
+
+No painel conectado, use **Abrir página de entrada dos clientes** para obter o link do estabelecimento, como `/fila.html?empresa=1`. O cliente informa nome e WhatsApp, escolhe um serviço e segue direto para o ticket. O uso de pacotes é registrado pela equipe no balcão.
+
+Ao registrar pelo balcão, use **Abrir link do cliente** na confirmação para compartilhar o ticket individual. Use o endereço HTTPS do sistema quando compartilhar links fora da máquina local. O ticket mostra a posição e o andamento daquela entrada.
+
+O painel carrega os módulos de `Agendamento_FrontEnd/assets/empresa/`. A entrada pública usa `fila-publica.mjs`, o acompanhamento usa `ticket.mjs` e as duas páginas compartilham `cliente.css`.
 
 ## Testes de integração
 
@@ -122,7 +137,7 @@ Sem `TEST_MYSQL_URL`, o Node informa que a suíte de integração foi pulada.
 
 ## Referência da API
 
-Envie `Authorization: Bearer <token>` nas rotas abaixo. A empresa vem do token. Se a URL ou o corpo também contiver `empresa_id`, use o ID associado à credencial. A consulta pública usa a credencial do próprio ticket.
+As rotas do operador usam `Authorization: Bearer <token>`. Se a URL ou o corpo também contiver `empresa_id`, use o ID associado à credencial. As rotas em `/fila-publica` aceitam requisições sem credencial de operador. O acompanhamento usa a credencial do ticket.
 
 | Método e rota | Uso |
 |---|---|
@@ -136,7 +151,9 @@ Envie `Authorization: Bearer <token>` nas rotas abaixo. A empresa vem do token. 
 | `POST /pacotes/vender` | Atribui um `pacote_id` ao `cliente_id`. |
 | `GET /pacotes/cliente/:cliente_id` | Consulta saldo e validade dos pacotes do cliente. |
 | `POST /agendamentos/fila` | Recebe `cliente_id`, `servico_id`, `data_atendimento` no formato `AAAA-MM-DD` e `cliente_pacote_id` opcional. Retorna o campo `ticket` para a consulta pública. |
-| `GET /agendamentos/ticket` | Usa `Authorization: Bearer <ticket>` com a credencial retornada na entrada. Retorna `posicao_fila`, `status` e `pessoas_na_frente`, ou `404` se o ticket estiver ausente ou for inválido. |
+| `GET /fila-publica/:empresa_id/servicos` | Retorna o nome do estabelecimento e o catálogo de serviços. |
+| `POST /fila-publica/:empresa_id/entradas` | Recebe `nome`, `telefone_whatsapp`, `servico_id` e um `ticket` aleatório de 64 caracteres hexadecimais gerado pela página. Registra a entrada na fila do dia e retorna a posição. Reenvie o mesmo ticket ao repetir uma requisição. |
+| `GET /agendamentos/ticket` | Usa `Authorization: Bearer <ticket>`. Retorna `posicao_fila`, `status` e `pessoas_na_frente`, ou `404` se o ticket estiver ausente ou for inválido. |
 | `GET /agendamentos/fila/:empresa_id/:data_atendimento` | Lista a fila do dia. |
 | `GET /agendamentos/proximo/:empresa_id/:data_atendimento` | Consulta o próximo cliente da fila. |
 | `PATCH /agendamentos/status` | Recebe `id` e `status`. Envie `confirmado` para iniciar, `concluido` para concluir ou `cancelado` para cancelar. |
@@ -153,36 +170,3 @@ A API permite um atendimento em andamento por empresa e dia. O endpoint público
 | `500` em `/testar-conexao` | Verifique se o MySQL está rodando e revise `DB_HOST`, `DB_USER`, `DB_PASSWORD` e `DB_NAME`. |
 | A fila falha em uma base antiga | Confira se `agendamentos` tem as colunas `posicao_fila` e `data_atendimento`. Se estiverem ausentes, aplique a migração do primeiro passo. |
 | A lista de serviços está vazia | Cadastre um serviço com o token da empresa conectada e reconecte o painel. |
-
-
-
-* **.gitignore**: O arquivo `.env` (contendo credenciais do MySQL) e a pasta `node_modules/` **não são versionados** por questões de segurança e otimização de repositório.
-* **Variáveis de Ambiente**: Todas as credenciais de banco e serviços de mensageria usam a biblioteca `dotenv`.
-
-
-COMANDOS:
-
-$tokenEmpresa = node -e "const fs = require('node:fs'); const env = require('dotenv').parse(fs.readFileSync('.env')); process.stdout.write(Object.values(JSON.parse(env.EMPRESA_TOKENS))[0])"
-$api = 'http://127.0.0.1:3000'
-$cabecalhos = @{ Authorization = "Bearer $tokenEmpresa" }
-
-Invoke-RestMethod -Uri "$api/testar-conexao" -Headers $cabecalhos
-
----
-
-$clienteId = 7
-$pacoteId = 3
-$corpo = @{ cliente_id = $clienteId; pacote_id = $pacoteId } | ConvertTo-Json
-
-Invoke-RestMethod -Method Post -Uri "$api/pacotes/vender" -Headers $cabecalhos `
-  -ContentType 'application/json' -Body $corpo
-
----
-
-  Invoke-RestMethod -Method Post -Uri "$api/pacotes" -Headers $cabecalhos `
-  -ContentType 'application/json' `
-  -Body '{"nome":"Pacote de 3 sessões","total_sessoes":3,"preco_total":90,"dias_validade":30}'
-
----
-
-

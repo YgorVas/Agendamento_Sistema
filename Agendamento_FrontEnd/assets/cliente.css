@@ -1,0 +1,43 @@
+:root {
+    color-scheme: light;
+    font-family: system-ui, sans-serif;
+    color: #172e27;
+    background: #edf5f1;
+}
+
+body {
+    margin: 0;
+    padding: clamp(1rem, 8vw, 5rem) 1rem;
+}
+
+main {
+    max-width: 28rem;
+    margin: auto;
+    padding: clamp(1.25rem, 6vw, 2.5rem);
+    border: 1px solid #cddfd6;
+    border-radius: 1.25rem;
+    background: white;
+}
+
+h1 { margin: 0 0 1rem; }
+p { margin: 0 0 1rem; }
+p:empty { display: none; }
+.estabelecimento { color: #146548; font-weight: 700; }
+
+form:not([hidden]) { display: grid; gap: .5rem; }
+label { font-weight: 600; }
+
+input, select, button {
+    box-sizing: border-box;
+    width: 100%;
+    padding: .75rem;
+    font: inherit;
+    border: 1px solid #8ba89a;
+    border-radius: .5rem;
+}
+
+input, select { margin-bottom: .5rem; background: white; }
+button { background: #146548; color: white; font-weight: 700; cursor: pointer; }
+button:disabled { opacity: .65; cursor: wait; }
+:focus-visible { outline: 3px solid #146548; outline-offset: 2px; }
+#posicao { font-size: 1.35rem; font-weight: 700; }

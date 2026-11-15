@@ -2,12 +2,12 @@ const pool = require('../config/db');
 
 const ClienteModel = {
     // Insere um novo cliente no banco de dados
-    criar: async (empresa_id, nome, telefone_whatsapp, email, observacoes) => {
+    criar: async (empresa_id, nome, telefone_whatsapp, email, observacoes, conexao = pool) => {
         const query = `
             INSERT INTO clientes (empresa_id, nome, telefone_whatsapp, email, observacoes)
             VALUES (?, ?, ?, ?, ?)
         `;
-        const [resultado] = await pool.execute(query, [empresa_id, nome, telefone_whatsapp, email, observacoes]);
+        const [resultado] = await conexao.execute(query, [empresa_id, nome, telefone_whatsapp, email, observacoes]);
         return resultado.insertId;
     },
 

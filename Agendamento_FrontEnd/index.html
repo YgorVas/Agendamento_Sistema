@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestão de Agendamentos & Fila Diária - MVP</title>
+    <title>Painel do estabelecimento</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome Icons CDN -->
@@ -15,7 +15,7 @@
 </head>
 <body class="h-full font-sans antialiased text-slate-800 flex flex-col">
 
-    <!-- TOP NAVIGATION BAR (PROFILE / VIEW SWITCHER) -->
+    <!-- Painel do estabelecimento -->
     <header class="bg-slate-900 text-white shadow-md sticky top-0 z-40">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
@@ -26,20 +26,8 @@
                     </div>
                     <div>
                         <h1 class="font-bold text-lg tracking-tight leading-tight">SistemaAgendamento</h1>
-                        <p class="text-xs text-slate-400">Sistema de Fila & Pacotes B2B</p>
+                        <p class="text-xs text-slate-400">Painel do estabelecimento</p>
                     </div>
-                </div>
-
-                <!-- Profile Switcher Tabs -->
-                <div class="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
-                    <button id="btn-view-empresa" onclick="switchView('empresa')" class="flex items-center space-x-2 px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all bg-brand-600 text-white shadow-sm">
-                        <i class="fa-solid fa-store"></i>
-                        <span>Painel Empresa</span>
-                    </button>
-                    <button id="btn-view-cliente" onclick="switchView('cliente')" class="flex items-center space-x-2 px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all text-slate-300 hover:text-white">
-                        <i class="fa-solid fa-mobile-screen-button"></i>
-                        <span>Atender cliente</span>
-                    </button>
                 </div>
             </div>
         </div>
@@ -67,6 +55,7 @@
         <!-- 1. PAINEL DA EMPRESA (ESTABELECIMENTO)     -->
         <!-- ========================================== -->
         <section id="view-empresa" class="space-y-6">
+            <a id="link-fila-publica" class="inline-block text-sm font-semibold text-brand-600 underline" target="_blank" rel="noopener noreferrer">Abrir página de entrada dos clientes</a>
 
             <!-- Sub-Header & Action Controls -->
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
@@ -79,7 +68,7 @@
                         <span class="w-2 h-2 rounded-full bg-emerald-500 mr-2 pulse-active"></span>
                         Fila Ativa Hoje
                     </span>
-                    <button onclick="openModalServicosPacotes()" class="flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition">
+                    <button id="abrir-catalogo" class="flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition">
                         <i class="fa-solid fa-layer-group"></i>
                         <span>Serviços & Pacotes</span>
                     </button>
@@ -102,7 +91,7 @@
                         <!-- Dynamic JS Content -->
                     </div>
                     <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
-                        <button id="btn-concluir" onclick="concluirAtendimentoAtual()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition shadow-sm flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button id="btn-concluir" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition shadow-sm flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed">
                             <i class="fa-solid fa-check-circle"></i>
                             <span>Concluir Atendimento</span>
                         </button>
@@ -122,7 +111,7 @@
                         <!-- Dynamic JS Content -->
                     </div>
                     <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
-                        <button id="btn-chamar-proximo" onclick="chamarProximoFila()" class="w-full sm:w-auto bg-sky-600 hover:bg-sky-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition shadow-sm flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button id="btn-chamar-proximo" class="w-full sm:w-auto bg-sky-600 hover:bg-sky-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition shadow-sm flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed">
                             <i class="fa-solid fa-bullhorn"></i>
                             <span>Chamar Próximo</span>
                         </button>
@@ -165,7 +154,9 @@
         <!-- ========================================== -->
         <!-- 2. VISÃO DO CLIENTE (TOTEM / CELULAR)      -->
         <!-- ========================================== -->
-        <section id="view-cliente" class="hidden max-w-md mx-auto space-y-6">
+        <details class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+            <summary class="cursor-pointer font-semibold">Registrar cliente no balcão</summary>
+            <section class="max-w-md mx-auto mt-4 space-y-6">
 
             <!-- Check-in Card (Entrar na Fila) -->
             <div id="cliente-form-card" class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-lg space-y-5">
@@ -177,7 +168,7 @@
                     <p class="text-xs text-slate-500">Selecione o cliente e o serviço para gerar a senha de atendimento.</p>
                 </div>
 
-                <form id="form-entrar-fila" onsubmit="handleEntrarFila(event)" class="space-y-4">
+                <form id="form-entrar-fila" class="space-y-4">
                     <label class="block text-sm" for="select-cliente">Cliente</label>
                     <select id="select-cliente" class="w-full border rounded-xl p-2"></select>
 
@@ -214,7 +205,7 @@
             <!-- Ticket & Acompanhamento da Fila (Após Check-in) -->
             <div id="cliente-status-card" class="hidden bg-white rounded-2xl border border-slate-200/80 shadow-lg overflow-hidden">
                 <div class="bg-gradient-to-r from-brand-600 to-emerald-700 p-6 text-white text-center relative">
-                    <button onclick="sairFilaCliente()" class="absolute top-4 right-4 text-emerald-200 hover:text-white text-xs font-semibold flex items-center space-x-1">
+                    <button id="fechar-senha" type="button" class="absolute top-4 right-4 text-emerald-200 hover:text-white text-xs font-semibold flex items-center space-x-1">
                         <i class="fa-solid fa-xmark"></i>
                         <span>Fechar senha</span>
                     </button>
@@ -266,6 +257,7 @@
 
         </section>
 
+        </details>
     </main>
 
     <!-- ========================================== -->
@@ -279,7 +271,7 @@
                     <i class="fa-solid fa-box text-brand-600"></i>
                     <h3 class="font-bold text-slate-900 text-base">Catálogo de Serviços e Pacotes</h3>
                 </div>
-                <button onclick="closeModalServicosPacotes()" class="text-slate-400 hover:text-slate-600 p-1">
+                <button type="button" data-fechar-catalogo class="text-slate-400 hover:text-slate-600 p-1">
                     <i class="fa-solid fa-xmark text-lg"></i>
                 </button>
             </div>
@@ -309,7 +301,7 @@
 
             <!-- Footer -->
             <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-                <button onclick="closeModalServicosPacotes()" class="bg-slate-800 text-white font-semibold text-xs px-4 py-2 rounded-xl hover:bg-slate-900 transition">
+                <button type="button" data-fechar-catalogo class="bg-slate-800 text-white font-semibold text-xs px-4 py-2 rounded-xl hover:bg-slate-900 transition">
                     Fechar
                 </button>
             </div>
@@ -318,6 +310,6 @@
 
 
     <!-- JAVASCRIPT LOGIC -->
-    <script type="module" src="/assets/painel.mjs"></script>
+    <script type="module" src="/assets/empresa/index.mjs"></script>
 </body>
 </html>

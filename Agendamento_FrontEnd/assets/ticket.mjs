@@ -1,3 +1,5 @@
+import { requisitar } from './api.mjs';
+
 const token = location.hash.slice(1);
 const status = document.getElementById('status');
 const posicao = document.getElementById('posicao');
@@ -8,18 +10,7 @@ async function atualizarTicket() {
         return;
     }
     try {
-        const resposta = await fetch('/agendamentos/ticket', {
-            headers: { Authorization: 'Bearer ' + token },
-            cache: 'no-store',
-            signal: AbortSignal.timeout(10000)
-        });
-        if (resposta.status === 404) {
-            posicao.hidden = true;
-            status.textContent = 'Ticket não encontrado.';
-            return;
-        }
-        if (!resposta.ok) throw new Error('Consulta indisponível');
-        const ticket = await resposta.json();
+        const ticket = await requisitar('/agendamentos/ticket', { token });
         posicao.textContent = 'Sua posição na fila é #' + ticket.posicao_fila;
         posicao.hidden = false;
         status.textContent = {
@@ -31,7 +22,12 @@ async function atualizarTicket() {
             cancelado: 'Seu atendimento foi cancelado.'
         }[ticket.status];
         if (ticket.status === 'concluido' || ticket.status === 'cancelado') return;
-    } catch {
+    } catch (erro) {
+        if (erro.status === 404) {
+            posicao.hidden = true;
+            status.textContent = 'Ticket não encontrado.';
+            return;
+        }
         status.textContent = 'Falha ao atualizar o ticket. Tentando novamente…';
     }
     setTimeout(atualizarTicket, 5000);

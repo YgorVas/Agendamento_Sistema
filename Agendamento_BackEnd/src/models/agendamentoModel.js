@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const ClienteModel = require('./clienteModel');
 
 async function transacaoDaEmpresa(empresaId, executar) {
     const conexao = await pool.getConnection();
@@ -19,7 +20,47 @@ async function transacaoDaEmpresa(empresaId, executar) {
     }
 }
 
+async function inserirNaFila(conexao, empresaId, clienteId, servicoId, pacoteId, data, ticketHash) {
+    const [fila] = await conexao.execute(
+        `SELECT COALESCE(MAX(posicao_fila), 0) + 1 AS posicao,
+                COUNT(CASE WHEN status IN ('agendado', 'confirmado') THEN 1 END) AS pessoas
+         FROM agendamentos WHERE empresa_id = ? AND data_atendimento = ? AND posicao_fila IS NOT NULL`,
+        [empresaId, data]
+    );
+    const { posicao, pessoas } = fila[0];
+    const [novo] = await conexao.execute(
+        `INSERT INTO agendamentos
+            (empresa_id, cliente_id, servico_id, cliente_pacote_id, posicao_fila, data_atendimento, data_hora, status, ticket_hash)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), 'agendado', ?)`,
+        [empresaId, clienteId, servicoId, pacoteId, posicao, data, ticketHash]
+    );
+    return { id: novo.insertId, posicao, pessoas };
+}
+
 const AgendamentoModel = {
+    entrarNaFilaPublica: (empresaId, nome, telefone, servicoId, data, ticketHash) =>
+        transacaoDaEmpresa(empresaId, async (conexao) => {
+            const [entradas] = await conexao.execute(
+                'SELECT posicao_fila FROM agendamentos WHERE ticket_hash = ? AND empresa_id = ?',
+                [ticketHash, empresaId]
+            );
+            if (entradas.length) return { existente: true, posicao: entradas[0].posicao_fila };
+
+            const [servicos] = await conexao.execute(
+                'SELECT id FROM servicos WHERE id = ? AND empresa_id = ? FOR SHARE',
+                [servicoId, empresaId]
+            );
+            if (!servicos.length) return { erro: 'servico' };
+
+            const [clientes] = await conexao.execute(
+                'SELECT id FROM clientes WHERE empresa_id = ? AND nome = ? AND telefone_whatsapp = ? ORDER BY id LIMIT 1',
+                [empresaId, nome, telefone]
+            );
+            const clienteId = clientes[0]?.id ??
+                await ClienteModel.criar(empresaId, nome, telefone, null, null, conexao);
+            return inserirNaFila(conexao, empresaId, clienteId, servicoId, null, data, ticketHash);
+        }),
+
     entrarNaFila: (empresaId, clienteId, servicoId, pacoteId, data, ticketHash) =>
         transacaoDaEmpresa(empresaId, async (conexao) => {
             const [cadastro] = await conexao.execute(
@@ -42,20 +83,7 @@ const AgendamentoModel = {
                 if (!debito.affectedRows) return { erro: 'pacote' };
             }
 
-            const [fila] = await conexao.execute(
-                `SELECT COALESCE(MAX(posicao_fila), 0) + 1 AS posicao,
-                        COUNT(CASE WHEN status IN ('agendado', 'confirmado') THEN 1 END) AS pessoas
-                 FROM agendamentos WHERE empresa_id = ? AND data_atendimento = ? AND posicao_fila IS NOT NULL`,
-                [empresaId, data]
-            );
-            const { posicao, pessoas } = fila[0];
-            const [novo] = await conexao.execute(
-                `INSERT INTO agendamentos
-                    (empresa_id, cliente_id, servico_id, cliente_pacote_id, posicao_fila, data_atendimento, data_hora, status, ticket_hash)
-                 VALUES (?, ?, ?, ?, ?, ?, NOW(), 'agendado', ?)`,
-                [empresaId, clienteId, servicoId, pacoteId, posicao, data, ticketHash]
-            );
-            return { id: novo.insertId, posicao, pessoas };
+            return inserirNaFila(conexao, empresaId, clienteId, servicoId, pacoteId, data, ticketHash);
         }),
 
     consultarTicket: async (ticketHash) => {

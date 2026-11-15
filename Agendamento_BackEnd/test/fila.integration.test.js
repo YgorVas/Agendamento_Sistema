@@ -100,8 +100,13 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
     await t.test('serve o painel e seus módulos JavaScript', async () => {
         const painel = await fetch(base);
         assert.equal(painel.status, 200);
-        assert.match(await painel.text(), /src="\/assets\/painel.mjs"/);
-        for (const nome of ['painel.mjs', 'api.mjs', 'painel.css', 'tailwind-config.js']) {
+        assert.match(await painel.text(), /src="\/assets\/empresa\/index.mjs"/);
+        const entradaPublica = await fetch(base + '/fila.html?empresa=1');
+        assert.equal(entradaPublica.status, 200);
+        assert.match(await entradaPublica.text(), /src="\/assets\/fila-publica.mjs"/);
+        for (const nome of ['empresa/index.mjs', 'empresa/balcao.mjs', 'empresa/catalogo.mjs',
+            'empresa/fila.mjs', 'empresa/sessao.mjs', 'empresa/toast.mjs', 'html.mjs',
+            'api.mjs', 'painel.css', 'tailwind-config.js', 'fila-publica.mjs', 'cliente.css']) {
             const resposta = await fetch(base + '/assets/' + nome);
             assert.equal(resposta.status, 200, nome);
             await resposta.text();
@@ -157,5 +162,37 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         assert.equal(cancelar.status, 200);
         const cancelado = await requisicao('/agendamentos/ticket', ticket);
         assert.equal((await cancelado.json()).status, 'cancelado');
+    });
+
+    await t.test('cliente entra pelo catálogo público e repete a requisição sem duplicar a entrada', async () => {
+        const catalogo = await fetch(base + '/fila-publica/1/servicos');
+        assert.equal(catalogo.status, 200);
+        const dados = await catalogo.json();
+        assert.equal(dados.nome_fantasia, 'Empresa A');
+        assert.deepEqual(dados.servicos.map(servico => servico.id), [1]);
+
+        const ticket = randomBytes(32).toString('hex');
+        const pedido = { nome: 'Cliente público', telefone_whatsapp: '(82) 99999-1234', servico_id: 1, ticket };
+        const enviar = body => fetch(base + '/fila-publica/1/entradas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        assert.equal((await enviar({ ...pedido, servico_id: 2 })).status, 404);
+        const respostas = await Promise.all([enviar(pedido), enviar(pedido)]);
+        assert.deepEqual(respostas.map(resposta => resposta.status).sort(), [200, 201]);
+        const [primeira, segunda] = await Promise.all(respostas.map(resposta => resposta.json()));
+        assert.deepEqual(primeira, segunda);
+        const consulta = await requisicao('/agendamentos/ticket', ticket);
+        assert.equal(consulta.status, 200);
+        assert.equal((await consulta.json()).posicao_fila, primeira.posicao_fila);
+
+        const data = new Intl.DateTimeFormat('sv-SE', {
+            timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date());
+        const fila = await requisicao('/agendamentos/fila/1/' + data, tokenA);
+        const clientes = (await fila.json()).filter(item => item.cliente_nome === pedido.nome);
+        assert.equal(clientes.length, 1);
+        assert.equal(clientes[0].posicao_fila, primeira.posicao_fila);
     });
 });

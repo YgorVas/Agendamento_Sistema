@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Entrar na fila</title>
+    <link rel="stylesheet" href="/assets/cliente.css">
+    <script type="module" src="/assets/fila-publica.mjs"></script>
+</head>
+<body>
+    <main>
+        <p id="estabelecimento" class="estabelecimento" hidden></p>
+        <h1>Entrar na fila</h1>
+        <p id="mensagem" role="status">Carregando serviços…</p>
+        <form id="entrada" hidden>
+            <label for="nome">Nome completo</label>
+            <input id="nome" name="nome" autocomplete="name" maxlength="100" required>
+            <label for="whatsapp">WhatsApp com DDD</label>
+            <input id="whatsapp" name="telefone_whatsapp" type="tel" autocomplete="tel" maxlength="20" required>
+            <label for="servico">Serviço</label>
+            <select id="servico" name="servico_id" required></select>
+            <button type="submit">Entrar na fila</button>
+        </form>
+    </main>
+</body>
+</html>

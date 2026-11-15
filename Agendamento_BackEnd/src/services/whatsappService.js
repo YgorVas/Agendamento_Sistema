@@ -1,5 +1,3 @@
-const axios = require('axios');
-
 const WhatsappService = {
     enviarMensagem: async (telefone, mensagem) => {
         try {

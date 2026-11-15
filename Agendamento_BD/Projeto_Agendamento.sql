@@ -85,6 +85,7 @@ CREATE TABLE agendamentos (
     servico_id INT,
     cliente_pacote_id INT DEFAULT NULL, -- Preenchido se for uso de um pacote/combo
     posicao_fila INT NULL,
+    ticket_hash BINARY(32) NULL UNIQUE,
     data_atendimento DATE NOT NULL,
     data_hora DATETIME NOT NULL,
     status ENUM('agendado', 'confirmado', 'concluido', 'cancelado') DEFAULT 'agendado',

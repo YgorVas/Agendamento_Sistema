@@ -9,7 +9,7 @@ Você precisa de **Node.js 18 ou superior**, **MySQL 8 em execução** e uma con
 ### 1. Prepare o banco
 
 - **Instalação nova.** Abra e execute o arquivo inteiro [Projeto_Agendamento.sql](Agendamento_BD/Projeto_Agendamento.sql). Ele cria o banco `gestao_agendamentos` e as tabelas.
-- **Base existente.** Faça um backup e execute [Testes.sql](Agendamento_BD/Testes.sql). Apesar do nome, esse arquivo é a migração da fila. Ele adiciona as colunas e o índice necessários quando estão ausentes e preenche datas vazias a partir de `data_hora`.
+- **Base existente.** Faça um backup e aplique [001_fila_diaria.sql](Agendamento_BD/migrations/001_fila_diaria.sql) e [002_ticket_publico.sql](Agendamento_BD/migrations/002_ticket_publico.sql), nessa ordem, antes de atualizar o servidor. Ambas podem ser reaplicadas. A primeira migra a fila e preserva os registros legados. A segunda habilita o ticket público para novas entradas.
 
 Configure o backend com uma conta MySQL que tenha `SELECT`, `INSERT` e `UPDATE` em `gestao_agendamentos`. A conta usada para criar ou atualizar o esquema precisa de permissões adicionais de administração do banco.
 
@@ -45,20 +45,7 @@ npm ci
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-<<<<<<< HEAD
 Gere um token com o ID obtido no passo anterior. Troque `'1'` pelo ID real. O último comando imprime a linha que você vai colar no `.env`.
-=======
-4. **Configurar Variáveis de Ambiente**:
-   * Crie um arquivo `.env` na raiz do projeto com base no modelo `.env.example`:
-     ```env
-     PORT=3000
-     DB_HOST=localhost
-     DB_USER=seu_usuario
-     DB_PASSWORD=sua_senha
-     DB_NAME=gestao_agendamentos
-     WEBHOOK_VERIFY_TOKEN=senha
-     ```
->>>>>>> ccff8e527ea5c8a1b854cdb1bca90d09b03b483b
 
 ```powershell
 $empresaId = '1'
@@ -103,7 +90,6 @@ O teste de conexão retorna `testeDoBanco: 2`. O cadastro retorna o ID do servi�
 
 > Em versões do PowerShell anteriores à 7.2, remova `-MaskInput` do comando `Read-Host` se o parâmetro estiver indisponível.
 
-<<<<<<< HEAD
 ### 5. Faça um atendimento de teste
 
 1. Abra o [painel local](http://127.0.0.1:3000/) no navegador. Informe o **ID da empresa** e o **token do operador** e clique em **Conectar**.
@@ -119,9 +105,24 @@ O painel mostra a fila do dia no fuso de São Paulo e a atualiza a cada 10 segun
 2. Consulte `GET /clientes/empresa/:empresa_id` para obter o ID de um cliente cadastrado. Atribua o modelo com `POST /pacotes/vender`, enviando `cliente_id` e o `pacote_id` retornado no passo anterior.
 3. Na aba **Atender cliente**, selecione esse cliente, o serviço e o pacote. Ao confirmar a entrada, a API desconta uma sessão. Consulte o saldo restante em `GET /pacotes/cliente/:cliente_id`.
 
+## Link do cliente
+
+Após inserir o cliente na fila, use **Abrir link do cliente** no painel para obter a URL compartilhável. Use o endereço HTTPS do sistema ao compartilhar o link fora da máquina local. Quem tem o link pode consultar a posição e o status daquele ticket. A consulta não inclui nome, telefone ou a lista da fila.
+
+## Testes de integração
+
+No PowerShell, a partir da raiz do repositório, configure a URL de uma instância MySQL reservada para testes. A conta precisa poder criar e remover o banco temporário `agendamento_test_*`. A suíte cria um nome aleatório e remove esse banco ao terminar.
+
+```powershell
+$env:TEST_MYSQL_URL = 'mysql://usuario:senha@127.0.0.1:3306'
+npm.cmd --prefix Agendamento_BackEnd test
+```
+
+Sem `TEST_MYSQL_URL`, o Node informa que a suíte de integração foi pulada.
+
 ## Referência da API
 
-Envie `Authorization: Bearer <token>` nas rotas abaixo. A empresa vem do token. Se a URL ou o corpo também contiver `empresa_id`, use o ID associado à credencial.
+Envie `Authorization: Bearer <token>` nas rotas abaixo. A empresa vem do token. Se a URL ou o corpo também contiver `empresa_id`, use o ID associado à credencial. A consulta pública usa a credencial do próprio ticket.
 
 | Método e rota | Uso |
 |---|---|
@@ -134,7 +135,8 @@ Envie `Authorization: Bearer <token>` nas rotas abaixo. A empresa vem do token. 
 | `GET /pacotes/empresa/:empresa_id` | Lista os modelos de pacotes. |
 | `POST /pacotes/vender` | Atribui um `pacote_id` ao `cliente_id`. |
 | `GET /pacotes/cliente/:cliente_id` | Consulta saldo e validade dos pacotes do cliente. |
-| `POST /agendamentos/fila` | Recebe `cliente_id`, `servico_id`, `data_atendimento` no formato `AAAA-MM-DD` e `cliente_pacote_id` opcional. |
+| `POST /agendamentos/fila` | Recebe `cliente_id`, `servico_id`, `data_atendimento` no formato `AAAA-MM-DD` e `cliente_pacote_id` opcional. Retorna o campo `ticket` para a consulta pública. |
+| `GET /agendamentos/ticket` | Usa `Authorization: Bearer <ticket>` com a credencial retornada na entrada. Retorna `posicao_fila`, `status` e `pessoas_na_frente`, ou `404` se o ticket estiver ausente ou for inválido. |
 | `GET /agendamentos/fila/:empresa_id/:data_atendimento` | Lista a fila do dia. |
 | `GET /agendamentos/proximo/:empresa_id/:data_atendimento` | Consulta o próximo cliente da fila. |
 | `PATCH /agendamentos/status` | Recebe `id` e `status`. Envie `confirmado` para iniciar, `concluido` para concluir ou `cancelado` para cancelar. |
@@ -151,7 +153,36 @@ A API permite um atendimento em andamento por empresa e dia. O endpoint público
 | `500` em `/testar-conexao` | Verifique se o MySQL está rodando e revise `DB_HOST`, `DB_USER`, `DB_PASSWORD` e `DB_NAME`. |
 | A fila falha em uma base antiga | Confira se `agendamentos` tem as colunas `posicao_fila` e `data_atendimento`. Se estiverem ausentes, aplique a migração do primeiro passo. |
 | A lista de serviços está vazia | Cadastre um serviço com o token da empresa conectada e reconecte o painel. |
-=======
+
+
+
 * **.gitignore**: O arquivo `.env` (contendo credenciais do MySQL) e a pasta `node_modules/` **não são versionados** por questões de segurança e otimização de repositório.
 * **Variáveis de Ambiente**: Todas as credenciais de banco e serviços de mensageria usam a biblioteca `dotenv`.
->>>>>>> ccff8e527ea5c8a1b854cdb1bca90d09b03b483b
+
+
+COMANDOS:
+
+$tokenEmpresa = node -e "const fs = require('node:fs'); const env = require('dotenv').parse(fs.readFileSync('.env')); process.stdout.write(Object.values(JSON.parse(env.EMPRESA_TOKENS))[0])"
+$api = 'http://127.0.0.1:3000'
+$cabecalhos = @{ Authorization = "Bearer $tokenEmpresa" }
+
+Invoke-RestMethod -Uri "$api/testar-conexao" -Headers $cabecalhos
+
+---
+
+$clienteId = 7
+$pacoteId = 3
+$corpo = @{ cliente_id = $clienteId; pacote_id = $pacoteId } | ConvertTo-Json
+
+Invoke-RestMethod -Method Post -Uri "$api/pacotes/vender" -Headers $cabecalhos `
+  -ContentType 'application/json' -Body $corpo
+
+---
+
+  Invoke-RestMethod -Method Post -Uri "$api/pacotes" -Headers $cabecalhos `
+  -ContentType 'application/json' `
+  -Body '{"nome":"Pacote de 3 sessões","total_sessoes":3,"preco_total":90,"dias_validade":30}'
+
+---
+
+

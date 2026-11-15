@@ -1,5 +1,7 @@
+const { createHash, randomBytes } = require('node:crypto');
 const AgendamentoModel = require('../models/agendamentoModel');
 const WhatsappService = require('../services/whatsappService');
+const hashTicket = (token) => createHash('sha256').update(token).digest();
 
 const idValido = (valor) =>
     (typeof valor === 'number' || typeof valor === 'string') &&
@@ -20,9 +22,10 @@ const agendamentoController = {
                 return res.status(400).json({ erro: 'Informe IDs válidos e uma data no formato YYYY-MM-DD.' });
             }
 
+            const ticket = randomBytes(32).toString('hex');
             const fila = await AgendamentoModel.entrarNaFila(
                 req.empresaId, Number(cliente_id), Number(servico_id),
-                cliente_pacote_id == null ? null : Number(cliente_pacote_id), data_atendimento
+                cliente_pacote_id == null ? null : Number(cliente_pacote_id), data_atendimento, hashTicket(ticket)
             );
             if (fila.erro === 'pacote') {
                 return res.status(400).json({ erro: 'Pacote inválido, expirado ou sem sessões restantes.' });
@@ -34,6 +37,7 @@ const agendamentoController = {
             return res.status(201).json({
                 mensagem: 'Cliente inserido na fila com sucesso!',
                 agendamento_id: fila.id,
+                ticket,
                 posicao_fila: fila.posicao,
                 pessoas_na_frente: fila.pessoas,
                 aviso_cliente: fila.pessoas === 0
@@ -44,6 +48,14 @@ const agendamentoController = {
             console.error('Erro ao inserir cliente na fila:', error);
             return res.status(500).json({ erro: 'Erro interno ao entrar na fila.' });
         }
+    },
+
+    consultarTicket: async (req, res) => {
+        res.set('Cache-Control', 'no-store');
+        const token = /^Bearer ([0-9a-f]{64})$/.exec(req.get('Authorization') || '')?.[1];
+        const ticket = token && await AgendamentoModel.consultarTicket(hashTicket(token));
+        if (!ticket) return res.status(404).json({ erro: 'Ticket não encontrado.' });
+        return res.json(ticket);
     },
 
     // GET /agendamentos/fila/:empresa_id/:data_atendimento - Consultar fila

@@ -5,6 +5,7 @@ const agendamentoController = require('../controllers/agendamentoController');
 
 // Entrar na fila de atendimento
 router.post('/fila', autenticarEmpresa, agendamentoController.entrarNaFila);
+router.get('/ticket', agendamentoController.consultarTicket);
 
 // Listar a fila do dia para a empresa
 router.get('/fila/:empresa_id/:data_atendimento', autenticarEmpresa, agendamentoController.obterFila);

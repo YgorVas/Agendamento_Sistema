@@ -20,7 +20,7 @@ async function transacaoDaEmpresa(empresaId, executar) {
 }
 
 const AgendamentoModel = {
-    entrarNaFila: (empresaId, clienteId, servicoId, pacoteId, data) =>
+    entrarNaFila: (empresaId, clienteId, servicoId, pacoteId, data, ticketHash) =>
         transacaoDaEmpresa(empresaId, async (conexao) => {
             const [cadastro] = await conexao.execute(
                 `SELECT c.id FROM clientes c JOIN servicos s ON s.empresa_id = c.empresa_id
@@ -51,12 +51,25 @@ const AgendamentoModel = {
             const { posicao, pessoas } = fila[0];
             const [novo] = await conexao.execute(
                 `INSERT INTO agendamentos
-                    (empresa_id, cliente_id, servico_id, cliente_pacote_id, posicao_fila, data_atendimento, data_hora, status)
-                 VALUES (?, ?, ?, ?, ?, ?, NOW(), 'agendado')`,
-                [empresaId, clienteId, servicoId, pacoteId, posicao, data]
+                    (empresa_id, cliente_id, servico_id, cliente_pacote_id, posicao_fila, data_atendimento, data_hora, status, ticket_hash)
+                 VALUES (?, ?, ?, ?, ?, ?, NOW(), 'agendado', ?)`,
+                [empresaId, clienteId, servicoId, pacoteId, posicao, data, ticketHash]
             );
             return { id: novo.insertId, posicao, pessoas };
         }),
+
+    consultarTicket: async (ticketHash) => {
+        const [linhas] = await pool.execute(`
+            SELECT ticket.posicao_fila, ticket.status,
+                   (SELECT COUNT(*) FROM agendamentos fila
+                    WHERE fila.empresa_id = ticket.empresa_id
+                      AND fila.data_atendimento = ticket.data_atendimento
+                      AND fila.posicao_fila < ticket.posicao_fila
+                      AND fila.status IN ('agendado', 'confirmado')) AS pessoas_na_frente
+            FROM agendamentos ticket WHERE ticket.ticket_hash = ?
+        `, [ticketHash]);
+        return linhas[0];
+    },
 
     // 4. Listar a fila do dia ordenada pela posição
     listarFilaDoDia: async (empresa_id, data_atendimento) => {

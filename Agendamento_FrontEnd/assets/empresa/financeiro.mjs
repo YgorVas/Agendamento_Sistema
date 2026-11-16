@@ -1,9 +1,6 @@
 import { api } from './sessao.mjs';
 import { escapeHtml } from '../html.mjs';
 
-const telaFila = document.getElementById('view-fila');
-const telaFinanceiro = document.getElementById('view-financeiro');
-const abrir = document.getElementById('abrir-financeiro');
 const atualizar = document.getElementById('atualizar-financeiro');
 const conteudo = document.getElementById('conteudo-financeiro');
 const estado = document.getElementById('estado-financeiro');
@@ -42,7 +39,6 @@ function ajustarFiltro() {
 export function resetarFinanceiro() {
     consultaResumo++;
     consultaPeriodo++;
-    telaFinanceiro.hidden = true;
     conteudo.hidden = true;
     resultadoPeriodo.hidden = true;
     estado.textContent = '';
@@ -158,20 +154,16 @@ async function carregarPeriodo() {
     }
 }
 
+export function abrirFinanceiro() {
+    carregarResumo();
+    if ((!data.value && !ano.value) || filtro.checkValidity()) carregarPeriodo();
+}
+
 export function configurarFinanceiro() {
-    abrir.addEventListener('click', () => {
-        telaFila.hidden = true;
-        telaFinanceiro.hidden = false;
-        document.getElementById('titulo-financeiro').focus();
-        carregarResumo();
-        carregarPeriodo();
-    });
-    document.getElementById('voltar-financeiro').addEventListener('click', () => {
-        resetarFinanceiro();
-        telaFila.hidden = false;
-        abrir.focus();
-    });
     tipo.addEventListener('change', ajustarFiltro);
+    document.getElementById('exportar-historico-pdf').addEventListener('click', () => {
+        if (!resultadoPeriodo.hidden) window.print();
+    });
     filtro.addEventListener('submit', evento => {
         evento.preventDefault();
         carregarPeriodo();

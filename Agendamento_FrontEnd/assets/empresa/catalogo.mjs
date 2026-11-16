@@ -1,18 +1,10 @@
 import { api, state } from './sessao.mjs';
 import { escapeHtml } from '../html.mjs';
 
-const telaFila = document.getElementById('view-fila');
 const telaCatalogo = document.getElementById('view-catalogo');
-const abrir = document.getElementById('abrir-catalogo');
 const moeda = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
-function mostrarCatalogo(visivel) {
-    telaFila.hidden = visivel;
-    telaCatalogo.hidden = !visivel;
-}
-
 export function resetarCatalogo() {
-    mostrarCatalogo(false);
     telaCatalogo.querySelectorAll('form').forEach(formulario => formulario.reset());
     telaCatalogo.querySelectorAll('[aria-live]').forEach(aviso => aviso.replaceChildren());
 }
@@ -30,7 +22,7 @@ function renderLista(tipo, itens, detalhe, preco) {
     `).join('') : '<li class="text-slate-500">Nenhum cadastro ainda.</li>';
 }
 
-function renderCatalogo() {
+export function renderCatalogo() {
     renderLista('servico', state.servicos, item => `${Number(item.duracao_minutos)} min`, 'preco');
     renderLista('pacote', state.pacotes,
         item => `${Number(item.total_sessoes)} sessões · ${Number(item.dias_validade)} dias de validade`,
@@ -38,16 +30,6 @@ function renderCatalogo() {
 }
 
 export function configurarCatalogo({ executarAcao, atualizarServicos }) {
-    abrir.addEventListener('click', () => {
-        renderCatalogo();
-        mostrarCatalogo(true);
-        document.getElementById('titulo-catalogo').focus();
-    });
-    document.getElementById('voltar-fila').addEventListener('click', () => {
-        mostrarCatalogo(false);
-        abrir.focus();
-    });
-
     function configurarCadastro({ tipo, rota, chaveId, camposNumericos, aoSalvar }) {
         const formulario = document.getElementById('form-' + tipo);
         const aviso = document.getElementById('aviso-' + tipo);

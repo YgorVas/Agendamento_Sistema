@@ -37,3 +37,125 @@
     outline: 2px solid #059669;
     outline-offset: 1px;
 }
+
+#menu-painel a {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 0.75rem;
+    padding: 0.65rem 0.8rem;
+    color: #334155;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+#menu-painel a:hover {
+    background: #f1f5f9;
+}
+
+#menu-painel a:focus-visible {
+    outline: 2px solid #059669;
+    outline-offset: -2px;
+}
+
+#menu-painel a[aria-current="page"] {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+@page historico-financeiro {
+    size: A4;
+    margin: 14mm;
+}
+
+@media print {
+    body:has(#view-financeiro:not([hidden]) #resultado-periodo-financeiro:not([hidden])) {
+        display: block;
+        height: auto;
+        margin: 0;
+        background: white;
+        color: black;
+    }
+
+    body:has(#view-financeiro:not([hidden]) #resultado-periodo-financeiro:not([hidden])) > :not(#painel),
+    #painel:has(#view-financeiro:not([hidden]) #resultado-periodo-financeiro:not([hidden])) > :not(#view-financeiro),
+    #view-financeiro:has(#resultado-periodo-financeiro:not([hidden])) > :not(#historico-financeiro),
+    #historico-financeiro:has(#resultado-periodo-financeiro:not([hidden])) > :not(#resultado-periodo-financeiro),
+    #exportar-historico-pdf {
+        display: none !important;
+    }
+
+    #painel:has(#view-financeiro:not([hidden]) #resultado-periodo-financeiro:not([hidden])) {
+        page: historico-financeiro;
+        max-width: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    #titulo-historico-pdf {
+        display: block !important;
+        margin: 0 0 5mm;
+        font-size: 20pt;
+        font-weight: 700;
+        break-after: avoid;
+    }
+
+    #resultado-periodo-financeiro > section,
+    #resultado-periodo-financeiro > .overflow-hidden {
+        overflow: visible;
+        margin: 0 0 5mm;
+        padding: 0;
+        border: 0;
+    }
+
+    #resultado-periodo-financeiro > section > .grid,
+    #resultado-periodo-financeiro .overflow-x-auto {
+        display: block;
+        overflow: visible;
+    }
+
+    #grafico-financeiro {
+        width: 42mm;
+        margin: 4mm auto;
+        break-inside: avoid;
+    }
+
+    #grafico-financeiro,
+    #legenda-financeiro li > span:first-child {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    #resultado-periodo-financeiro h4 {
+        break-after: avoid;
+    }
+
+    #resultado-periodo-financeiro table {
+        width: 100%;
+        table-layout: fixed;
+        font-size: 9pt;
+    }
+
+    #resultado-periodo-financeiro thead {
+        display: table-header-group;
+    }
+
+    #resultado-periodo-financeiro tr,
+    #legenda-financeiro li {
+        break-inside: avoid;
+    }
+
+    #resultado-periodo-financeiro th,
+    #resultado-periodo-financeiro td {
+        padding: 2mm;
+        border-bottom: 1px solid #cbd5e1;
+        overflow-wrap: anywhere;
+        white-space: normal;
+    }
+
+    #resultado-periodo-financeiro th:first-child,
+    #resultado-periodo-financeiro th:last-child {
+        width: 16%;
+    }
+}

@@ -1,9 +1,31 @@
 import { api, state } from './sessao.mjs';
 import { configurarFila, renderEmpresaView } from './fila.mjs';
 import { configurarBalcao, preencherClientes, populateServicoOptionsSelect, carregarPacotesCliente, renderClienteView } from './balcao.mjs';
-import { configurarCatalogo, resetarCatalogo } from './catalogo.mjs';
-import { configurarFinanceiro, resetarFinanceiro } from './financeiro.mjs';
+import { configurarCatalogo, renderCatalogo, resetarCatalogo } from './catalogo.mjs';
+import { abrirFinanceiro, configurarFinanceiro, resetarFinanceiro } from './financeiro.mjs';
 import { showToast } from './toast.mjs';
+
+const painel = document.getElementById('painel');
+const linksMenu = document.querySelectorAll('#menu-painel a');
+
+function mostrarTela() {
+    if (painel.hidden) return;
+    const destino = [...linksMenu].find(link => link.hash === window.location.hash) ?? linksMenu[0];
+    for (const link of linksMenu) {
+        const nome = link.hash.slice(1);
+        const selecionado = link === destino;
+        document.getElementById('view-' + nome).hidden = !selecionado;
+        if (selecionado) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+    }
+
+    const tela = destino.hash.slice(1);
+    if (tela === 'catalogo') renderCatalogo();
+    if (tela === 'financeiro') abrirFinanceiro();
+    document.getElementById('titulo-' + tela).focus();
+}
+
+window.addEventListener('hashchange', mostrarTela);
 
 let ocupado = false;
 let carregandoFila = false;
@@ -43,7 +65,6 @@ document.getElementById('form-acesso').addEventListener('submit', evento => {
     evento.preventDefault();
     executarAcao(async () => {
         const campoToken = document.getElementById('empresa-token');
-        const painel = document.getElementById('painel');
         const estado = document.getElementById('estado-conexao');
         const sair = document.getElementById('btn-sair');
         sair.hidden = true;
@@ -68,6 +89,7 @@ document.getElementById('form-acesso').addEventListener('submit', evento => {
             painel.hidden = false;
             sair.hidden = false;
             estado.textContent = `Empresa ${state.empresaId} conectada.`;
+            mostrarTela();
         } catch (erro) {
             state.token = null;
             estado.textContent = 'Falha ao conectar.';
@@ -94,7 +116,7 @@ document.getElementById('btn-sair').addEventListener('click', () => {
     resetarFinanceiro();
     resetarCatalogo();
     document.getElementById('form-entrar-fila').reset();
-    document.getElementById('painel').hidden = true;
+    painel.hidden = true;
     document.getElementById('btn-sair').hidden = true;
     document.getElementById('estado-conexao').textContent = 'Conecte-se para carregar a fila.';
 });

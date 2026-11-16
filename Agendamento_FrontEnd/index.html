@@ -51,32 +51,35 @@
     <!-- MAIN CONTENT AREA -->
     <main id="painel" hidden class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
 
-        <!-- ========================================== -->
-        <!-- 1. PAINEL DA EMPRESA (ESTABELECIMENTO)     -->
-        <!-- ========================================== -->
-        <div id="view-fila">
-        <section id="view-empresa" class="space-y-6">
+        <nav id="menu-painel" aria-label="Menu do estabelecimento" class="mb-6 grid grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm sm:flex sm:flex-wrap sm:gap-2">
+            <a href="#fila" aria-current="page">
+                <i class="fa-solid fa-list-ol" aria-hidden="true"></i> Fila
+            </a>
+            <a href="#balcao">
+                <i class="fa-solid fa-user-plus" aria-hidden="true"></i> Registrar cliente no balcão
+            </a>
+            <a href="#catalogo">
+                <i class="fa-solid fa-layer-group" aria-hidden="true"></i> Serviços e pacotes
+            </a>
+            <a href="#financeiro">
+                <i class="fa-solid fa-chart-column" aria-hidden="true"></i> Financeiro
+            </a>
+        </nav>
+
+        <section id="view-fila" class="space-y-6" aria-labelledby="titulo-fila">
             <a id="link-fila-publica" class="inline-block text-sm font-semibold text-brand-600 underline" target="_blank" rel="noopener noreferrer">Abrir página de entrada dos clientes</a>
 
             <!-- Sub-Header & Action Controls -->
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
                 <div>
-                    <h2 class="text-xl font-bold text-slate-900">Gestão de Fila em Tempo Real</h2>
+                    <h2 id="titulo-fila" tabindex="-1" class="text-xl font-bold text-slate-900">Fila de atendimento</h2>
                     <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Acompanhe e avance a fila de atendimento diária.</p>
                 </div>
-                <div class="flex flex-wrap items-center gap-3">
+                <div>
                     <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
                         <span class="w-2 h-2 rounded-full bg-emerald-500 mr-2 pulse-active"></span>
                         Fila Ativa Hoje
                     </span>
-                    <button id="abrir-catalogo" type="button" class="flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition">
-                        <i class="fa-solid fa-layer-group"></i>
-                        <span>Serviços e pacotes</span>
-                    </button>
-                    <button id="abrir-financeiro" type="button" class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition">
-                        <i class="fa-solid fa-chart-column" aria-hidden="true"></i>
-                        Financeiro
-                    </button>
                 </div>
             </div>
 
@@ -156,12 +159,8 @@
         </section>
 
 
-        <!-- ========================================== -->
-        <!-- 2. VISÃO DO CLIENTE (TOTEM / CELULAR)      -->
-        <!-- ========================================== -->
-        <details class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
-            <summary class="cursor-pointer font-semibold">Registrar cliente no balcão</summary>
-            <section class="max-w-md mx-auto mt-4 space-y-6">
+        <section id="view-balcao" hidden class="max-w-lg mx-auto space-y-5" aria-labelledby="titulo-balcao">
+            <h2 id="titulo-balcao" tabindex="-1" class="text-2xl font-bold text-slate-900">Registrar cliente no balcão</h2>
 
             <!-- Check-in Card (Entrar na Fila) -->
             <div id="cliente-form-card" class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-lg space-y-5">
@@ -169,7 +168,7 @@
                     <div class="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-brand-50 text-brand-600 mb-2">
                         <i class="fa-solid fa-ticket-simple text-xl"></i>
                     </div>
-                    <h2 class="text-xl font-bold text-slate-900">Entrar na Fila Ativa</h2>
+                    <h3 class="text-xl font-bold text-slate-900">Entrada na fila</h3>
                     <p class="text-xs text-slate-500">Selecione o cliente e o serviço para gerar a senha de atendimento.</p>
                 </div>
 
@@ -262,13 +261,8 @@
 
         </section>
 
-        </details>
-        </div>
         <section id="view-catalogo" hidden class="space-y-6" aria-labelledby="titulo-catalogo">
-            <div>
-                <button id="voltar-fila" type="button" class="mb-3 text-sm font-semibold text-brand-600 hover:underline">← Voltar à fila</button>
-                <h2 id="titulo-catalogo" tabindex="-1" class="text-2xl font-bold text-slate-900">Serviços e pacotes</h2>
-            </div>
+            <h2 id="titulo-catalogo" tabindex="-1" class="text-2xl font-bold text-slate-900">Serviços e pacotes</h2>
             <div class="grid items-start gap-6 lg:grid-cols-2">
                 <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                     <h3 class="text-lg font-semibold">Novo serviço</h3>
@@ -323,9 +317,6 @@
         </section>
 
         <section id="view-financeiro" hidden class="space-y-6" aria-labelledby="titulo-financeiro">
-            <button id="voltar-financeiro" type="button" class="text-sm font-semibold text-slate-600 hover:text-slate-900">
-                <i class="fa-solid fa-arrow-left mr-2" aria-hidden="true"></i>Voltar à fila
-            </button>
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <h2 id="titulo-financeiro" tabindex="-1" class="text-2xl font-bold text-slate-900">Financeiro</h2>
@@ -360,7 +351,7 @@
                 </div>
             </div>
 
-            <section class="space-y-4" aria-labelledby="titulo-historico-financeiro">
+            <section id="historico-financeiro" class="space-y-4" aria-labelledby="titulo-historico-financeiro">
                 <div class="rounded-2xl border border-slate-200 bg-white p-5">
                     <h3 id="titulo-historico-financeiro" class="font-bold text-slate-900">Histórico de serviços</h3>
                     <form id="filtro-financeiro" class="mt-4 flex flex-wrap items-end gap-3">
@@ -390,6 +381,10 @@
                 </div>
                 <p id="estado-periodo-financeiro" role="status" class="empty:hidden text-sm text-slate-600"></p>
                 <div id="resultado-periodo-financeiro" hidden class="space-y-4">
+                    <button id="exportar-historico-pdf" type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-100">
+                        <i class="fa-solid fa-file-pdf mr-1" aria-hidden="true"></i> Exportar PDF
+                    </button>
+                    <h2 id="titulo-historico-pdf" hidden>Histórico financeiro</h2>
                     <section class="rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="titulo-grafico-financeiro">
                         <div class="flex flex-wrap items-start justify-between gap-3">
                             <div>

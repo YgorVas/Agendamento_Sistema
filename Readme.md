@@ -93,15 +93,17 @@ O teste de conexão retorna `testeDoBanco: 2`. O cadastro retorna o ID do servi�
 ### 5. Faça um atendimento de teste
 
 1. Abra o [painel local](http://127.0.0.1:3000/) no navegador. Informe o **ID da empresa** e o **token do operador** e clique em **Conectar**.
-2. Abra **Registrar cliente no balcão**, selecione um cliente existente ou escolha **Cadastrar novo cliente** e preencha nome e telefone.
+2. No menu do estabelecimento, abra **Registrar cliente no balcão**, selecione um cliente existente ou escolha **Cadastrar novo cliente** e preencha nome e telefone.
 3. Selecione o serviço **Atendimento**, deixe o pacote como **Sem pacote** e clique em **Confirmar Entrada na Fila**. A tela deve mostrar a senha do cliente.
-4. Confira se o cliente apareceu na fila do painel. Clique em **Chamar Próximo** e depois em **Concluir Atendimento**.
+4. No menu, abra **Fila** e confira se o cliente apareceu. Clique em **Chamar Próximo** e depois em **Concluir Atendimento**.
 
 O painel mostra a fila do dia no fuso de São Paulo e a atualiza a cada 10 segundos. Para disponibilizar o sistema em outra máquina, configure `HOST` e sirva a aplicação por HTTPS.
 
 ## Financeiro do estabelecimento
 
 Depois de concluir um atendimento, abra **Financeiro** no painel. Os cartões mostram o valor dos serviços concluídos hoje, desde segunda-feira e desde o primeiro dia do mês, no fuso de São Paulo. Em **Histórico de serviços**, selecione dia, semana, mês ou ano e clique em **Consultar**. O gráfico de pizza mostra a participação de cada serviço no período, incluindo as sessões de pacote. O gráfico considera todos os registros do período e agrupa serviços pelo nome registrado. A tabela lista até 30 atendimentos mais recentes do período.
+
+Clique em **Exportar PDF** e escolha **Salvar como PDF** no diálogo do navegador. O relatório inclui o intervalo consultado, o total, o gráfico com a legenda e a tabela exibida no Histórico.
 
 O sistema registra o preço do serviço avulso ou o preço total do pacote dividido pelo total de sessões. A API preserva o valor registrado na conclusão mesmo quando o preço do catálogo muda e arredonda os totais a centavos após somar. O histórico começa com as conclusões feitas após a atualização, pois os atendimentos antigos não guardavam a data da conclusão nem o valor aplicado.
 

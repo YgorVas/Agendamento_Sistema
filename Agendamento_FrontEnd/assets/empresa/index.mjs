@@ -1,7 +1,8 @@
 import { api, state } from './sessao.mjs';
 import { configurarFila, renderEmpresaView } from './fila.mjs';
 import { configurarBalcao, preencherClientes, populateServicoOptionsSelect, carregarPacotesCliente, renderClienteView } from './balcao.mjs';
-import { closeModalServicosPacotes, renderModalData } from './catalogo.mjs';
+import { configurarCatalogo, resetarCatalogo } from './catalogo.mjs';
+import { configurarFinanceiro, resetarFinanceiro } from './financeiro.mjs';
 import { showToast } from './toast.mjs';
 
 let ocupado = false;
@@ -46,7 +47,8 @@ document.getElementById('form-acesso').addEventListener('submit', evento => {
         const estado = document.getElementById('estado-conexao');
         const sair = document.getElementById('btn-sair');
         sair.hidden = true;
-        closeModalServicosPacotes();
+        resetarFinanceiro();
+        resetarCatalogo();
         painel.hidden = true;
         estado.textContent = 'Conectando…';
         state.empresaId = Number(document.getElementById('empresa-id').value);
@@ -89,7 +91,8 @@ document.getElementById('btn-sair').addEventListener('click', () => {
     populateServicoOptionsSelect();
     carregarPacotesCliente();
     renderAll();
-    closeModalServicosPacotes();
+    resetarFinanceiro();
+    resetarCatalogo();
     document.getElementById('form-entrar-fila').reset();
     document.getElementById('painel').hidden = true;
     document.getElementById('btn-sair').hidden = true;
@@ -113,8 +116,9 @@ setInterval(async () => {
 function renderAll() {
     renderEmpresaView();
     renderClienteView();
-    renderModalData();
 }
 
 configurarFila({ executarAcao, atualizarFila });
 configurarBalcao({ executarAcao, atualizarFila, diaAtual });
+configurarCatalogo({ executarAcao, atualizarServicos: populateServicoOptionsSelect });
+configurarFinanceiro();

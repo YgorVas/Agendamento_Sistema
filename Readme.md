@@ -9,7 +9,7 @@ Você precisa de **Node.js 18 ou superior**, **MySQL 8 em execução** e uma con
 ### 1. Prepare o banco
 
 - **Instalação nova.** Abra e execute o arquivo inteiro [Projeto_Agendamento.sql](Agendamento_BD/Projeto_Agendamento.sql). Ele cria o banco `gestao_agendamentos` e as tabelas.
-- **Base existente.** Faça um backup e aplique [001_fila_diaria.sql](Agendamento_BD/migrations/001_fila_diaria.sql) e [002_ticket_publico.sql](Agendamento_BD/migrations/002_ticket_publico.sql), nessa ordem, antes de atualizar o servidor. Ambas podem ser reaplicadas. A primeira migra a fila e preserva os registros legados. A segunda habilita o ticket público para novas entradas.
+- **Base existente.** Faça um backup e aplique [001_fila_diaria.sql](Agendamento_BD/migrations/001_fila_diaria.sql), [002_ticket_publico.sql](Agendamento_BD/migrations/002_ticket_publico.sql) e [003_registros_atendimento.sql](Agendamento_BD/migrations/003_registros_atendimento.sql), nessa ordem, antes de atualizar o servidor. As migrações podem ser reaplicadas. Se a fila e o ticket público já estiverem configurados, basta aplicar a terceira.
 
 Configure o backend com uma conta MySQL dedicada. Depois de criar a conta, ajuste o usuário e o host em [PERMISSÃO.sql](Agendamento_BD/PERMISSÃO.sql) e execute o script com uma conta administrativa. Ele concede `SELECT`, `INSERT` e `UPDATE` em `gestao_agendamentos`. Para uma conta que já tenha privilégios adicionais, revise as concessões existentes. A conta usada para criar ou atualizar o esquema precisa de permissões adicionais de administração do banco.
 
@@ -99,6 +99,12 @@ O teste de conexão retorna `testeDoBanco: 2`. O cadastro retorna o ID do servi�
 
 O painel mostra a fila do dia no fuso de São Paulo e a atualiza a cada 10 segundos. Para disponibilizar o sistema em outra máquina, configure `HOST` e sirva a aplicação por HTTPS.
 
+## Financeiro do estabelecimento
+
+Depois de concluir um atendimento, abra **Financeiro** no painel. Os cartões mostram o valor dos serviços concluídos hoje, desde segunda-feira e desde o primeiro dia do mês, no fuso de São Paulo. Em **Histórico de serviços**, selecione dia, semana, mês ou ano e clique em **Consultar**. O gráfico de pizza mostra a participação de cada serviço no período, incluindo as sessões de pacote. O gráfico considera todos os registros do período e agrupa serviços pelo nome registrado. A tabela lista até 30 atendimentos mais recentes do período.
+
+O sistema registra o preço do serviço avulso ou o preço total do pacote dividido pelo total de sessões. A API preserva o valor registrado na conclusão mesmo quando o preço do catálogo muda e arredonda os totais a centavos após somar. O histórico começa com as conclusões feitas após a atualização, pois os atendimentos antigos não guardavam a data da conclusão nem o valor aplicado.
+
 ## Como testar um pacote
 
 1. Crie um modelo com `POST /pacotes`. Use, por exemplo, `{"nome":"Pacote de teste","total_sessoes":3,"preco_total":90,"dias_validade":30}`.
@@ -157,6 +163,8 @@ As rotas do operador usam `Authorization: Bearer <token>`. Se a URL ou o corpo t
 | `GET /agendamentos/fila/:empresa_id/:data_atendimento` | Lista a fila do dia. |
 | `GET /agendamentos/proximo/:empresa_id/:data_atendimento` | Consulta o próximo cliente da fila. |
 | `PATCH /agendamentos/status` | Recebe `id` e `status`. Envie `confirmado` para iniciar, `concluido` para concluir ou `cancelado` para cancelar. |
+| `GET /financeiro/resumo` | Retorna os valores e as quantidades de serviços concluídos hoje, na semana atual e no mês atual, além dos últimos 30 registros da empresa. |
+| `GET /financeiro/periodo?tipo=semana&data=2026-11-09` | Retorna o intervalo, o valor total, o valor por serviço e até 30 registros recentes da empresa no período. Os tipos são `dia`, `semana`, `mes` e `ano`. Sem parâmetros, consulta o mês atual. |
 
 A API permite um atendimento em andamento por empresa e dia. O endpoint público `GET /api/webhook/whatsapp` faz a verificação inicial do webhook quando `WEBHOOK_VERIFY_TOKEN` está configurado.
 

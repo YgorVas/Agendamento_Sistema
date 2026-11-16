@@ -30,6 +30,7 @@ app.use('/clientes', clienteRoutes);
 app.use('/servicos', servicoRoutes);
 app.use('/agendamentos', agendamentoRoutes);
 app.use('/pacotes', pacoteRoutes);
+app.use('/financeiro', require('./routes/financeiroRoutes'));
 app.use('/fila-publica', require('./routes/filaPublicaRoutes'));
 
 app.use('/api/webhook', webhookRoutes);

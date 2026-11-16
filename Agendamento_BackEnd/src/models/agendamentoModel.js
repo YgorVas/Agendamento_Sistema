@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const ClienteModel = require('./clienteModel');
+const { registrarAtendimento } = require('./financeiroModel');
 
 async function transacaoDaEmpresa(empresaId, executar) {
     const conexao = await pool.getConnection();
@@ -146,6 +147,7 @@ const AgendamentoModel = {
             await conexao.execute(
                 'UPDATE agendamentos SET status = ? WHERE id = ? AND empresa_id = ?', [status, id, empresaId]
             );
+            if (status === 'concluido') await registrarAtendimento(conexao, empresaId, id);
             return { mudou: true, data: atual.data };
         }),
 

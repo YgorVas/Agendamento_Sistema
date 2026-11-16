@@ -54,6 +54,7 @@
         <!-- ========================================== -->
         <!-- 1. PAINEL DA EMPRESA (ESTABELECIMENTO)     -->
         <!-- ========================================== -->
+        <div id="view-fila">
         <section id="view-empresa" class="space-y-6">
             <a id="link-fila-publica" class="inline-block text-sm font-semibold text-brand-600 underline" target="_blank" rel="noopener noreferrer">Abrir página de entrada dos clientes</a>
 
@@ -63,14 +64,18 @@
                     <h2 class="text-xl font-bold text-slate-900">Gestão de Fila em Tempo Real</h2>
                     <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Acompanhe e avance a fila de atendimento diária.</p>
                 </div>
-                <div class="flex items-center space-x-3">
+                <div class="flex flex-wrap items-center gap-3">
                     <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
                         <span class="w-2 h-2 rounded-full bg-emerald-500 mr-2 pulse-active"></span>
                         Fila Ativa Hoje
                     </span>
-                    <button id="abrir-catalogo" class="flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition">
+                    <button id="abrir-catalogo" type="button" class="flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition">
                         <i class="fa-solid fa-layer-group"></i>
-                        <span>Serviços & Pacotes</span>
+                        <span>Serviços e pacotes</span>
+                    </button>
+                    <button id="abrir-financeiro" type="button" class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition">
+                        <i class="fa-solid fa-chart-column" aria-hidden="true"></i>
+                        Financeiro
                     </button>
                 </div>
             </div>
@@ -258,56 +263,174 @@
         </section>
 
         </details>
-    </main>
-
-    <!-- ========================================== -->
-    <!-- MODAL: GESTÃO DE SERVIÇOS & PACOTES        -->
-    <!-- ========================================== -->
-    <div id="modal-servicos-pacotes" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-            <!-- Header -->
-            <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-                <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-box text-brand-600"></i>
-                    <h3 class="font-bold text-slate-900 text-base">Catálogo de Serviços e Pacotes</h3>
-                </div>
-                <button type="button" data-fechar-catalogo class="text-slate-400 hover:text-slate-600 p-1">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
-            </div>
-
-            <!-- Body Content -->
-            <div class="p-6 overflow-y-auto space-y-6 flex-1 text-sm">
-                
-                <!-- Serviços Avulsos -->
-                <div>
-                    <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wider mb-3 text-brand-600">Serviços Avulsos</h4>
-                    <div id="modal-list-servicos" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <!-- Injected JS -->
-                    </div>
-                </div>
-
-                <hr class="border-slate-100">
-
-                <!-- Pacotes / Combos -->
-                <div>
-                    <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wider mb-3 text-emerald-600">Modelos de Pacotes</h4>
-                    <div id="modal-list-pacotes" class="space-y-2">
-                        <!-- Injected JS -->
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- Footer -->
-            <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-                <button type="button" data-fechar-catalogo class="bg-slate-800 text-white font-semibold text-xs px-4 py-2 rounded-xl hover:bg-slate-900 transition">
-                    Fechar
-                </button>
-            </div>
         </div>
-    </div>
+        <section id="view-catalogo" hidden class="space-y-6" aria-labelledby="titulo-catalogo">
+            <div>
+                <button id="voltar-fila" type="button" class="mb-3 text-sm font-semibold text-brand-600 hover:underline">← Voltar à fila</button>
+                <h2 id="titulo-catalogo" tabindex="-1" class="text-2xl font-bold text-slate-900">Serviços e pacotes</h2>
+            </div>
+            <div class="grid items-start gap-6 lg:grid-cols-2">
+                <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <h3 class="text-lg font-semibold">Novo serviço</h3>
+                    <form id="form-servico" class="mt-4 space-y-4">
+                        <label class="block text-sm font-medium">Nome
+                            <input name="nome" type="text" required maxlength="100" class="catalogo-campo">
+                        </label>
+                        <label class="block text-sm font-medium">Descrição (opcional)
+                            <textarea name="descricao" rows="2" maxlength="2000" class="catalogo-campo"></textarea>
+                        </label>
+                        <div class="grid gap-4 sm:grid-cols-2">
+                        <label class="block text-sm font-medium">Duração (min)
+                            <input name="duracao_minutos" type="number" required min="1" max="2147483647" step="1" class="catalogo-campo">
+                        </label>
+                        <label class="block text-sm font-medium">Preço (R$)
+                            <input name="preco" type="number" required min="0.01" max="99999999.99" step="0.01" class="catalogo-campo">
+                        </label>
+                        </div>
+                        <button type="submit" class="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">Cadastrar serviço</button>
+                        <p id="aviso-servico" aria-live="polite" class="text-sm"></p>
+                    </form>
+                    <h4 class="mt-6 border-t border-slate-100 pt-4 text-sm font-semibold">Serviços cadastrados</h4>
+                    <ul id="lista-servico" class="mt-3 space-y-2 text-sm"></ul>
+                </section>
+                <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <h3 class="text-lg font-semibold">Novo modelo de pacote</h3>
+                    <form id="form-pacote" class="mt-4 space-y-4">
+                        <label class="block text-sm font-medium">Nome
+                            <input name="nome" type="text" required maxlength="100" class="catalogo-campo">
+                        </label>
+                        <label class="block text-sm font-medium">Descrição (opcional)
+                            <textarea name="descricao" rows="2" maxlength="2000" class="catalogo-campo"></textarea>
+                        </label>
+                        <div class="grid gap-4 sm:grid-cols-2">
+                        <label class="block text-sm font-medium">Total de sessões
+                            <input name="total_sessoes" type="number" required min="1" max="2147483647" step="1" class="catalogo-campo">
+                        </label>
+                        <label class="block text-sm font-medium">Validade (dias)
+                            <input name="dias_validade" type="number" required min="1" max="2147483647" step="1" value="30" class="catalogo-campo">
+                        </label>
+                        <label class="block text-sm font-medium">Preço total (R$)
+                            <input name="preco_total" type="number" required min="0.01" max="99999999.99" step="0.01" class="catalogo-campo">
+                        </label>
+                        </div>
+                        <button type="submit" class="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">Cadastrar pacote</button>
+                        <p id="aviso-pacote" aria-live="polite" class="text-sm"></p>
+                    </form>
+                    <h4 class="mt-6 border-t border-slate-100 pt-4 text-sm font-semibold">Modelos de pacote cadastrados</h4>
+                    <ul id="lista-pacote" class="mt-3 space-y-2 text-sm"></ul>
+                </section>
+            </div>
+        </section>
 
+        <section id="view-financeiro" hidden class="space-y-6" aria-labelledby="titulo-financeiro">
+            <button id="voltar-financeiro" type="button" class="text-sm font-semibold text-slate-600 hover:text-slate-900">
+                <i class="fa-solid fa-arrow-left mr-2" aria-hidden="true"></i>Voltar à fila
+            </button>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 id="titulo-financeiro" tabindex="-1" class="text-2xl font-bold text-slate-900">Financeiro</h2>
+                    <p class="mt-1 text-sm text-slate-500">Valores dos serviços por data de conclusão.</p>
+                </div>
+                <button id="atualizar-financeiro" type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-100 disabled:opacity-50">
+                    <i class="fa-solid fa-arrows-rotate mr-1" aria-hidden="true"></i> Atualizar
+                </button>
+            </div>
+            <p id="estado-financeiro" role="status" class="empty:hidden text-sm text-slate-600"></p>
+
+            <div id="conteudo-financeiro" hidden class="space-y-6">
+                <div class="grid gap-4 sm:grid-cols-3">
+                    <article class="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+                        <h3 class="text-sm font-semibold text-emerald-900">Hoje</h3>
+                        <p id="periodo-hoje" class="mt-1 text-xs text-emerald-800"></p>
+                        <p id="total-hoje" class="mt-4 text-2xl font-bold tabular-nums text-emerald-950"></p>
+                        <p id="qtd-hoje" class="mt-1 text-sm text-emerald-800"></p>
+                    </article>
+                    <article class="rounded-2xl border border-slate-200 bg-white p-5">
+                        <h3 class="text-sm font-semibold text-slate-800">Semana atual</h3>
+                        <p id="periodo-semana" class="mt-1 text-xs text-slate-500"></p>
+                        <p id="total-semana" class="mt-4 text-2xl font-bold tabular-nums text-slate-950"></p>
+                        <p id="qtd-semana" class="mt-1 text-sm text-slate-500"></p>
+                    </article>
+                    <article class="rounded-2xl border border-slate-200 bg-white p-5">
+                        <h3 class="text-sm font-semibold text-slate-800">Mês atual</h3>
+                        <p id="periodo-mes" class="mt-1 text-xs text-slate-500"></p>
+                        <p id="total-mes" class="mt-4 text-2xl font-bold tabular-nums text-slate-950"></p>
+                        <p id="qtd-mes" class="mt-1 text-sm text-slate-500"></p>
+                    </article>
+                </div>
+            </div>
+
+            <section class="space-y-4" aria-labelledby="titulo-historico-financeiro">
+                <div class="rounded-2xl border border-slate-200 bg-white p-5">
+                    <h3 id="titulo-historico-financeiro" class="font-bold text-slate-900">Histórico de serviços</h3>
+                    <form id="filtro-financeiro" class="mt-4 flex flex-wrap items-end gap-3">
+                        <label class="text-sm font-semibold">Período
+                            <select id="tipo-financeiro" name="tipo" class="catalogo-campo">
+                                <option value="dia">Dia</option>
+                                <option value="semana">Semana</option>
+                                <option value="mes" selected>Mês</option>
+                                <option value="ano">Ano</option>
+                            </select>
+                        </label>
+                        <div id="filtro-data-financeiro">
+                            <label class="text-sm font-semibold">Data de referência
+                                <input name="data" type="date" min="1000-01-01" required class="catalogo-campo">
+                            </label>
+                        </div>
+                        <div id="filtro-ano-financeiro" hidden>
+                            <label class="text-sm font-semibold">Ano
+                                <input name="ano" type="number" min="1000" step="1" required disabled class="catalogo-campo">
+                            </label>
+                        </div>
+                        <button type="submit" class="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">
+                            Consultar
+                        </button>
+                    </form>
+                    <p id="ajuda-periodo-financeiro" class="mt-2 text-xs text-slate-500">Escolha uma data no mês que você quer consultar.</p>
+                </div>
+                <p id="estado-periodo-financeiro" role="status" class="empty:hidden text-sm text-slate-600"></p>
+                <div id="resultado-periodo-financeiro" hidden class="space-y-4">
+                    <section class="rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="titulo-grafico-financeiro">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h4 id="titulo-grafico-financeiro" class="font-bold text-slate-900">Valor por serviço</h4>
+                                <p id="intervalo-financeiro" class="mt-1 text-sm text-slate-500"></p>
+                            </div>
+                            <div class="text-sm text-slate-500">
+                                Total do período
+                                <p id="total-periodo-financeiro" class="text-xl font-bold tabular-nums text-slate-900"></p>
+                            </div>
+                        </div>
+                        <p id="aviso-grafico-financeiro" class="mt-4 empty:hidden text-sm text-slate-500"></p>
+                        <div class="mt-4 grid items-center gap-6 sm:grid-cols-[auto_minmax(0,1fr)]">
+                            <div id="grafico-financeiro" hidden aria-hidden="true" class="mx-auto aspect-square w-48 rounded-full sm:w-56"></div>
+                            <ul id="legenda-financeiro" aria-label="Valores e participação por serviço" class="divide-y divide-slate-100 sm:col-start-2"></ul>
+                        </div>
+                    </section>
+                    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                        <div class="border-b border-slate-100 p-5">
+                            <h4 class="font-bold text-slate-900">Até 30 atendimentos mais recentes do período</h4>
+                            <p class="mt-1 text-sm text-slate-500">Cada sessão usa o preço total do pacote dividido pelo número de sessões. Os totais são arredondados após a soma.</p>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 text-xs text-slate-600">
+                                    <tr>
+                                        <th scope="col" class="px-4 py-3">Conclusão</th>
+                                        <th scope="col" class="px-4 py-3">Cliente</th>
+                                        <th scope="col" class="px-4 py-3">Serviço</th>
+                                        <th scope="col" class="px-4 py-3">Origem do valor</th>
+                                        <th scope="col" class="px-4 py-3 text-right">Valor</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="registros-financeiro" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </section>
+    </main>
 
     <!-- JAVASCRIPT LOGIC -->
     <script type="module" src="/assets/empresa/index.mjs"></script>

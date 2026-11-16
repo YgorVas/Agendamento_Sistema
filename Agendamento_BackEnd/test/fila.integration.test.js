@@ -37,10 +37,11 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         }
     });
 
-    const [schema, migracaoFila, migracaoTicket] = await Promise.all([
+    const [schema, migracaoFila, migracaoTicket, migracaoFinanceiro] = await Promise.all([
         readFile(path.join(sqlDir, 'Projeto_Agendamento.sql'), 'utf8'),
         readFile(path.join(sqlDir, 'migrations/001_fila_diaria.sql'), 'utf8'),
-        readFile(path.join(sqlDir, 'migrations/002_ticket_publico.sql'), 'utf8')
+        readFile(path.join(sqlDir, 'migrations/002_ticket_publico.sql'), 'utf8'),
+        readFile(path.join(sqlDir, 'migrations/003_registros_atendimento.sql'), 'utf8')
     ]);
     await db.query(schema.replace(/^(CREATE DATABASE IF NOT EXISTS|USE) gestao_agendamentos\b/gm,
         (_, comando) => comando + ' ' + banco));
@@ -60,12 +61,13 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
 
     await t.test('migra um registro legado e reaplica a migração', async () => {
         await db.query(`
+            DROP TABLE registros_atendimento;
             ALTER TABLE agendamentos DROP INDEX idx_fila_empresa_dia,
                 DROP COLUMN data_atendimento, DROP COLUMN posicao_fila, DROP COLUMN ticket_hash;
             INSERT INTO agendamentos (empresa_id, cliente_id, servico_id, data_hora)
             VALUES (1, 1, 1, '2024-01-02 13:45:00');
         `);
-        for (const migracao of [migracaoFila, migracaoTicket]) {
+        for (const migracao of [migracaoFila, migracaoTicket, migracaoFinanceiro]) {
             const sql = migracao.replace(/^USE gestao_agendamentos;/m, 'USE ' + banco + ';');
             await db.query(sql);
             await db.query(sql);
@@ -105,7 +107,7 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         assert.equal(entradaPublica.status, 200);
         assert.match(await entradaPublica.text(), /src="\/assets\/fila-publica.mjs"/);
         for (const nome of ['empresa/index.mjs', 'empresa/balcao.mjs', 'empresa/catalogo.mjs',
-            'empresa/fila.mjs', 'empresa/sessao.mjs', 'empresa/toast.mjs', 'html.mjs',
+            'empresa/fila.mjs', 'empresa/financeiro.mjs', 'empresa/sessao.mjs', 'empresa/toast.mjs', 'html.mjs',
             'api.mjs', 'painel.css', 'tailwind-config.js', 'fila-publica.mjs', 'cliente.css']) {
             const resposta = await fetch(base + '/assets/' + nome);
             assert.equal(resposta.status, 200, nome);
@@ -194,5 +196,115 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         const clientes = (await fila.json()).filter(item => item.cliente_nome === pedido.nome);
         assert.equal(clientes.length, 1);
         assert.equal(clientes[0].posicao_fila, primeira.posicao_fila);
+    });
+
+    await t.test('registra conclusões uma vez e soma avulsos e sessões por período e empresa', async () => {
+        const rota = '/financeiro/resumo';
+        assert.equal((await requisicao(rota, 'inválido')).status, 401);
+        await db.query(`
+            INSERT INTO pacotes (id, empresa_id, nome, total_sessoes, preco_total)
+            VALUES (2, 1, 'Três sessões', 3, 100);
+            INSERT INTO cliente_pacotes (id, cliente_id, pacote_id, sessoes_restantes, data_validade)
+            VALUES (2, 1, 2, 3, CURRENT_DATE + INTERVAL 30 DAY);
+        `);
+        const mudarStatus = (id, status) => requisicao('/agendamentos/status', tokenA, 'PATCH', { id, status });
+        const registrar = async (pedido) => {
+            const resposta = await entrar(pedido);
+            assert.equal(resposta.status, 201);
+            return (await resposta.json()).agendamento_id;
+        };
+        const avulso = await registrar({ ...entrada, data_atendimento: '2024-01-03' });
+        const cancelado = await registrar(entrada);
+        assert.equal((await mudarStatus(cancelado, 'cancelado')).status, 200);
+        assert.equal((await mudarStatus(avulso, 'confirmado')).status, 200);
+        const conclusoes = await Promise.all([mudarStatus(avulso, 'concluido'), mudarStatus(avulso, 'concluido')]);
+        assert.deepEqual(conclusoes.map(resposta => resposta.status), [200, 200]);
+        for (let sessao = 0; sessao < 3; sessao++) {
+            const id = await registrar({ ...entrada, cliente_pacote_id: 2 });
+            assert.equal((await mudarStatus(id, 'concluido')).status, 200);
+        }
+        await db.query('UPDATE servicos SET preco = 800 WHERE id = 1; UPDATE pacotes SET preco_total = 900 WHERE id = 2');
+
+        const lerResumo = async (token) => {
+            const resposta = await requisicao(rota, token);
+            assert.equal(resposta.status, 200);
+            assert.equal(resposta.headers.get('cache-control'), 'no-store');
+            return resposta.json();
+        };
+        const antes = await lerResumo(tokenA);
+        assert.equal(antes.totais.hoje, '120.00');
+        assert.equal(antes.totais.qtd_hoje, 4);
+        assert.deepEqual(antes.registros.map(({ data_conclusao, pacote_nome, valor }) =>
+            [data_conclusao, pacote_nome, valor]), [
+            ...Array.from({ length: 3 }, () => [antes.hoje, 'Três sessões', '33.33']),
+            [antes.hoje, null, '20.00']
+        ]);
+
+        await db.execute(`
+            INSERT INTO registros_atendimento
+                (agendamento_id, empresa_id, cliente_nome, servico_nome, valor, data_conclusao, concluido_em_utc)
+            VALUES (-1, 1, 'Cliente A', 'Anterior à semana', 10, DATE_SUB(?, INTERVAL 1 DAY), UTC_TIMESTAMP()),
+                   (-2, 1, 'Cliente A', 'Anterior ao mês', 40, DATE_SUB(?, INTERVAL 1 DAY), UTC_TIMESTAMP()),
+                   (-3, 1, 'Cliente A', 'Futuro', 80, DATE_ADD(?, INTERVAL 1 DAY), UTC_TIMESTAMP())
+        `, [antes.inicio_semana, antes.inicio_mes, antes.hoje]);
+        const depois = await lerResumo(tokenA);
+        const incluiMesAnterior = antes.inicio_mes > antes.inicio_semana;
+        const incluiSemanaAnterior = antes.inicio_semana > antes.inicio_mes;
+        assert.deepEqual(depois.totais, {
+            hoje: '120.00',
+            semana: incluiMesAnterior ? '160.00' : '120.00',
+            mes: incluiSemanaAnterior ? '130.00' : '120.00',
+            qtd_hoje: 4,
+            qtd_semana: incluiMesAnterior ? 5 : 4,
+            qtd_mes: incluiSemanaAnterior ? 5 : 4
+        });
+        assert.equal(depois.registros.length, 6);
+        const outraEmpresa = await lerResumo(tokenB);
+        assert.equal(outraEmpresa.totais.qtd_mes, 0);
+        assert.equal(outraEmpresa.totais.mes, '0.00');
+        assert.deepEqual(outraEmpresa.registros, []);
+    });
+
+    await t.test('consulta períodos anteriores e soma por serviço além das 30 linhas recentes', async () => {
+        const rota = '/financeiro/periodo';
+        for (const consulta of ['tipo=trimestre', 'data=2021-02-29', 'data=9999-01-01', 'data=2020-12-28&data=2021-01-01']) {
+            assert.equal((await requisicao(`${rota}?${consulta}`, tokenA)).status, 400);
+        }
+        const registros = Array.from({ length: 31 }, (_, indice) =>
+            [10000 + indice, 1, 'Cliente A', 'Corte', 10, '2020-12-28', '2020-12-28 12:00:00']);
+        registros.push(
+            [10031, 1, 'Cliente A', 'Barba', 30, '2021-01-03', '2021-01-03 12:00:00'],
+            [10032, 1, 'Cliente A', 'Barba', 20, '2021-01-04', '2021-01-04 12:00:00'],
+            [10033, 2, 'Cliente B', 'Corte', 150, '2020-12-28', '2020-12-28 12:00:00']
+        );
+        await db.query(`
+            INSERT INTO registros_atendimento
+                (agendamento_id, empresa_id, cliente_nome, servico_nome, valor, data_conclusao, concluido_em_utc)
+            VALUES ?
+        `, [registros]);
+
+        const consultar = async (tipo, data, token = tokenA) => {
+            const resposta = await requisicao(`${rota}?tipo=${tipo}&data=${data}`, token);
+            assert.equal(resposta.status, 200);
+            assert.equal(resposta.headers.get('cache-control'), 'no-store');
+            return resposta.json();
+        };
+        const dia = await consultar('dia', '2020-12-28');
+        assert.equal(dia.total, '310.00');
+        assert.equal(dia.registros.length, 30);
+        const semana = await consultar('semana', '2021-01-01');
+        assert.equal(semana.periodo.inicio, '2020-12-28');
+        assert.equal(semana.periodo.fim, '2021-01-03');
+        assert.equal(semana.total, '340.00');
+        assert.deepEqual(semana.servicos.map(({ nome, valor }) => [nome, Number(valor)]),
+            [['Corte', 310], ['Barba', 30]]);
+        assert.equal(semana.registros[0].data_conclusao, '2021-01-03');
+        assert.equal((await consultar('mes', '2021-01-30')).total, '50.00');
+        assert.equal((await consultar('ano', '2020-01-01')).total, '310.00');
+        assert.equal((await consultar('ano', '2020-01-01', tokenB)).total, '150.00');
+        const vazio = await consultar('dia', '2020-02-29');
+        assert.equal(vazio.total, '0.00');
+        assert.deepEqual(vazio.servicos, []);
+        assert.deepEqual(vazio.registros, []);
     });
 });

@@ -147,7 +147,15 @@ function renderAll() {
 
 configurarFila({ executarAcao, atualizarFila });
 configurarBalcao({ executarAcao, atualizarFila, diaAtual });
-configurarCatalogo({ executarAcao, atualizarServicos: populateServicoOptionsSelect });
+configurarCatalogo({
+    executarAcao,
+    atualizarServicos: populateServicoOptionsSelect,
+    aoAtribuirPacote: async clienteId => {
+        if (document.getElementById('select-cliente').value === clienteId) {
+            await carregarPacotesCliente();
+        }
+    }
+});
 configurarFinanceiro();
 
 if (tokenAtual()) conectarPainel();

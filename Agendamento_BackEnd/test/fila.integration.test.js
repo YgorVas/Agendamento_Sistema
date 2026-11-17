@@ -37,11 +37,12 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         }
     });
 
-    const [schema, migracaoFila, migracaoTicket, migracaoFinanceiro] = await Promise.all([
+    const [schema, migracaoFila, migracaoTicket, migracaoFinanceiro, migracaoAuth] = await Promise.all([
         readFile(path.join(sqlDir, 'Projeto_Agendamento.sql'), 'utf8'),
         readFile(path.join(sqlDir, 'migrations/001_fila_diaria.sql'), 'utf8'),
         readFile(path.join(sqlDir, 'migrations/002_ticket_publico.sql'), 'utf8'),
-        readFile(path.join(sqlDir, 'migrations/003_registros_atendimento.sql'), 'utf8')
+        readFile(path.join(sqlDir, 'migrations/003_registros_atendimento.sql'), 'utf8'),
+        readFile(path.join(sqlDir, 'migrations/004_autenticacao_multi_tenant.sql'), 'utf8')
     ]);
     await db.query(schema.replace(/^(CREATE DATABASE IF NOT EXISTS|USE) gestao_agendamentos\b/gm,
         (_, comando) => comando + ' ' + banco));
@@ -67,7 +68,7 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
             INSERT INTO agendamentos (empresa_id, cliente_id, servico_id, data_hora)
             VALUES (1, 1, 1, '2024-01-02 13:45:00');
         `);
-        for (const migracao of [migracaoFila, migracaoTicket, migracaoFinanceiro]) {
+        for (const migracao of [migracaoFila, migracaoTicket, migracaoFinanceiro, migracaoAuth]) {
             const sql = migracao.replace(/^USE gestao_agendamentos;/m, 'USE ' + banco + ';');
             await db.query(sql);
             await db.query(sql);
@@ -315,5 +316,61 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         assert.equal(vazio.total, '0.00');
         assert.deepEqual(vazio.servicos, []);
         assert.deepEqual(vazio.registros, []);
+    });
+    await t.test('login, troca de loja, atribuição de pacote, loja inativa e sessão expirada no MySQL', async () => {
+        const bcrypt = require('bcryptjs');
+        const jwt = require('jsonwebtoken');
+        const senha = 'demonstracao-integracao';
+        await db.execute('INSERT INTO usuarios (id, nome, email, senha_hash) VALUES (3, ?, ?, ?)',
+            ['Administrador Demo', 'demo@example.test', await bcrypt.hash(senha, 4)]);
+        await db.query(`
+            INSERT INTO usuario_comercios (usuario_id, empresa_id, cargo)
+            VALUES (3, 1, 'ADMIN'), (3, 2, 'CAIXA')
+        `);
+        const login = await requisicao('/auth/login', '', 'POST', { email: 'demo@example.test', senha });
+        assert.equal(login.status, 200);
+        const escolha = await login.json();
+        assert.equal(escolha.comercios.length, 2);
+        const acesso = await requisicao('/auth/selecionar-comercio', escolha.tokenTemporario, 'POST', { comercioId: 1 });
+        assert.equal(acesso.status, 200);
+        const { token } = await acesso.json();
+        const venda = await requisicao('/pacotes/vender', token, 'POST', { cliente_id: 1, pacote_id: 1 });
+        assert.equal(venda.status, 201);
+        const atribuicao = await venda.json();
+        assert.equal(atribuicao.sessoes_iniciais, 1);
+        assert.equal((await requisicao('/pacotes/vender', token, 'POST',
+            { cliente_id: 2, pacote_id: 1 })).status, 404);
+        assert.equal((await requisicao('/pacotes/vender', token, 'POST',
+            { cliente_id: 1, pacote_id: 0 })).status, 400);
+        const consumo = await entrar({ ...entrada, cliente_pacote_id: atribuicao.cliente_pacote_id }, token);
+        assert.equal(consumo.status, 201);
+        const saldo = await requisicao('/pacotes/cliente/1', token);
+        const pacote = (await saldo.json()).find(item => item.id === atribuicao.cliente_pacote_id);
+        assert.equal(pacote.sessoes_restantes, 0);
+        assert.equal(pacote.status, 'concluido');
+        const troca = await requisicao('/auth/iniciar-selecao', token, 'POST', {});
+        assert.equal(troca.status, 200);
+        const selecaoB = await requisicao('/auth/selecionar-comercio',
+            (await troca.json()).tokenTemporario, 'POST', { comercioId: 2 });
+        assert.equal(selecaoB.status, 200);
+        const { token: tokenCaixa } = await selecaoB.json();
+        const clientes = await requisicao('/clientes?empresa_id=1', tokenCaixa);
+        assert.deepEqual((await clientes.json()).map(cliente => cliente.id), [2]);
+        assert.equal((await requisicao('/financeiro/resumo', tokenCaixa)).status, 403);
+        assert.equal((await requisicao('/servicos', tokenCaixa, 'POST', { nome: 'Proibido' })).status, 403);
+        assert.equal((await requisicao('/pacotes', tokenCaixa, 'POST', { nome: 'Proibido' })).status, 403);
+        const expirado = jwt.sign({ usuarioId: 3, comercioId: 1, cargo: 'ADMIN' }, segredo,
+            { algorithm: 'HS256', issuer: 'agendamento', audience: 'acesso-comercio', expiresIn: -1 });
+        assert.equal((await requisicao('/clientes', expirado)).status, 401);
+        try {
+            await db.query('UPDATE empresas SET ativo = FALSE WHERE id = 2');
+            assert.equal((await requisicao('/clientes', tokenCaixa)).status, 403);
+            const novoLogin = await requisicao('/auth/login', '', 'POST', { email: 'demo@example.test', senha });
+            const direto = await novoLogin.json();
+            assert.equal(direto.comercioId, 1);
+            assert.ok(direto.token);
+        } finally {
+            await db.query('UPDATE empresas SET ativo = TRUE WHERE id = 2');
+        }
     });
 });

@@ -5,6 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
+    "demo": "node scripts/preparar-demo.js",
     "dev": "nodemon src/server.js",
     "test": "node --test"
   },

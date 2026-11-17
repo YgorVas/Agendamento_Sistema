@@ -63,6 +63,24 @@ VALUES (LAST_INSERT_ID(), 1, 'ADMIN');
 
 O painel mostra a fila do dia no fuso de São Paulo e a atualiza a cada 10 segundos. Para disponibilizar o sistema em outra máquina, configure `HOST` e sirva a aplicação por HTTPS.
 
+### Preparar dados de demonstração
+
+Com o banco indicado em `DB_NAME` criado e o `.env` configurado, execute `npm run demo` no backend usando uma conta MySQL com permissão de migração. O comando prepara as tabelas de uma base vazia, aplica as quatro migrações e cria **Demo Centro** e **Demo Jardins**, cada uma com cliente, serviço e pacote próprios. A conta `demo-admin@example.invalid` recebe acesso administrativo às duas lojas.
+
+Na primeira execução, o terminal exibe a senha aleatória gerada. Guarde-a para entregar ao testador. Para definir a senha inicial, configure `DEMO_PASSWORD` no ambiente antes de executar. As execuções seguintes preservam as credenciais e os registros já existentes, sem duplicar os cadastros da demonstração.
+
+Entre em `/login`, escolha uma das lojas e use **Trocar de Loja** para conferir os diferentes cadastros.
+
+### Link temporário de demonstração
+
+Com o servidor local em execução na porta 3000, use o executável oficial `cloudflared` para abrir o túnel temporário.
+
+```powershell
+cloudflared tunnel --url http://127.0.0.1:3000 --protocol http2 --no-autoupdate
+```
+
+Abra o endereço HTTPS exibido no terminal, acrescentando `/login`, e compartilhe o link e as credenciais de demonstração com o testador. Mantenha o computador, o servidor e o túnel em execução durante o teste. O encerramento do túnel desativa o link, e uma nova execução gera outro endereço. Consulte as [instruções oficiais da Cloudflare](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
+
 ## Financeiro do estabelecimento
 
 Depois de concluir um atendimento, abra **Financeiro** no painel. Os cartões mostram o valor dos serviços concluídos hoje, desde segunda-feira e desde o primeiro dia do mês, no fuso de São Paulo. Em **Histórico de serviços**, selecione dia, semana, mês ou ano e clique em **Consultar**. O gráfico de pizza mostra a participação de cada serviço no período, incluindo as sessões de pacote. O gráfico considera todos os registros do período e agrupa serviços pelo nome registrado. A tabela lista até 30 atendimentos mais recentes do período.
@@ -74,8 +92,9 @@ O sistema registra o preço do serviço avulso ou o preço total do pacote divid
 ## Como testar um pacote
 
 1. Em **Serviços e pacotes**, crie um pacote de teste com uma conta `ADMIN` ou `GERENTE`.
-2. Para atribuí-lo a um cliente, use `POST /pacotes/vender` com o JWT de acesso no cabeçalho `Authorization: Bearer <token>` e envie `cliente_id` e `pacote_id`. Consulte os IDs em `GET /clientes` e `GET /pacotes`.
+2. Na mesma tela, em **Atribuir pacote a cliente**, selecione um cliente cadastrado e um modelo de pacote. Clique em **Atribuir pacote**. O painel confirma o saldo inicial de sessões e o prazo de validade.
 3. Em **Registrar cliente no balcão**, escolha o cliente, o serviço e o pacote. A entrada desconta uma sessão. A rota `GET /pacotes/cliente/:cliente_id` retorna o saldo restante.
+4. Volte a **Serviços e pacotes**, selecione o cliente e confira **Saldo de pacotes do cliente**, com sessões restantes, validade e situação.
 
 ## Entrada pública e acompanhamento
 

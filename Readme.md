@@ -26,9 +26,34 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 No `.env`, ajuste `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` e `DB_NAME`. Cole o segredo gerado em `AUTH_JWT_SECRET`. Mantenha `HOST=127.0.0.1` e `PORT=3000` para o teste local. O envio de WhatsApp é simulado e `WEBHOOK_VERIFY_TOKEN` pode ficar vazio. Mantenha o `.env` fora do Git.
 
-### 3. Prepare a conta de teste
+### 3. Cadastre uma empresa e prepare a conta de teste
 
-Cadastre uma empresa ativa ou use uma existente. A tabela `empresas` ainda exige `email` e `senha_hash` no cadastro do estabelecimento. A credencial de login fica em `usuarios`.
+Após preparar o banco, abra uma conexão no MySQL Workbench e selecione o banco definido em `DB_NAME`. Os exemplos abaixo usam `gestao_agendamentos`. O cadastro da empresa fica em `empresas`, a conta usada para entrar no painel fica em `usuarios` e o acesso a cada loja fica em `usuario_comercios`.
+
+#### Cadastre o estabelecimento
+
+Execute o bloco abaixo no editor SQL do Workbench. Ajuste o nome, o WhatsApp e o e-mail para a empresa de teste. Use um e-mail diferente para cada empresa.
+
+```sql
+USE gestao_agendamentos;
+
+INSERT INTO empresas (nome_fantasia, telefone_whatsapp, email, senha_hash, ativo)
+VALUES ('Empresa Teste Centro', '5511000000001', 'empresa-centro@example.invalid', 'demo-sem-login', TRUE);
+
+SET @empresa_teste_id = LAST_INSERT_ID();
+SELECT @empresa_teste_id AS empresa_id;
+```
+
+Mantenha a mesma conexão SQL aberta para os próximos blocos. A variável `@empresa_teste_id` guarda o ID gerado para o vínculo com o operador. O campo `ativo = TRUE` permite acessar a loja. A tabela `empresas` ainda exige `senha_hash`, por isso o exemplo preenche esse campo com `demo-sem-login`. O login do painel valida a senha bcrypt da conta em `usuarios`.
+
+Para usar uma empresa já cadastrada, consulte as lojas e substitua `<ID_DA_EMPRESA>` pelo ID escolhido.
+
+```sql
+SELECT id, nome_fantasia FROM empresas WHERE ativo = TRUE ORDER BY id;
+SET @empresa_teste_id = <ID_DA_EMPRESA>;
+```
+
+#### Crie a conta e vincule o administrador
 
 Gere um hash bcrypt da senha de teste com `bcryptjs` no diretório do backend. No PowerShell 7.2 ou superior, use os comandos abaixo e guarde o hash retornado.
 
@@ -41,18 +66,59 @@ try {
 }
 ```
 
-No cliente MySQL, substitua o hash e o ID da empresa no exemplo. Execute os comandos na mesma conexão.
+Volte à mesma conexão no Workbench. Substitua `<HASH_BCRYPT>` pelo hash gerado e escolha um e-mail de operador ainda disponível. Execute o bloco inteiro para criar a conta e vinculá-la à empresa selecionada.
 
 ```sql
 USE gestao_agendamentos;
-SELECT id, nome_fantasia FROM empresas WHERE ativo = TRUE ORDER BY id;
+
+START TRANSACTION;
 
 INSERT INTO usuarios (nome, email, senha_hash)
 VALUES ('Operador Demo', 'operador@example.invalid', '<HASH_BCRYPT>');
 
+SET @operador_teste_id = LAST_INSERT_ID();
+
 INSERT INTO usuario_comercios (usuario_id, empresa_id, cargo)
-VALUES (LAST_INSERT_ID(), 1, 'ADMIN');
+VALUES (@operador_teste_id, @empresa_teste_id, 'ADMIN');
+
+COMMIT;
+
+SELECT u.email, e.nome_fantasia, uc.cargo, e.ativo
+FROM usuario_comercios uc
+JOIN usuarios u ON u.id = uc.usuario_id
+JOIN empresas e ON e.id = uc.empresa_id
+WHERE u.id = @operador_teste_id;
 ```
+
+Se ocorrer um erro antes do `COMMIT`, execute `ROLLBACK;` e corrija os dados antes de repetir o cadastro. Para entrar em `/login`, informe `operador@example.invalid` e a senha digitada no PowerShell ao gerar o hash.
+
+Para vincular uma conta já existente, consulte seu ID e execute apenas o vínculo com a empresa selecionada.
+
+```sql
+SELECT id, nome, email FROM usuarios ORDER BY nome;
+SET @operador_teste_id = <ID_DO_USUARIO>;
+
+INSERT INTO usuario_comercios (usuario_id, empresa_id, cargo)
+VALUES (@operador_teste_id, @empresa_teste_id, 'ADMIN');
+```
+
+Cada usuário tem um vínculo por empresa. O cargo `ADMIN` permite usar o painel completo. `GERENTE` também acessa catálogo e financeiro, e `CAIXA` opera o atendimento, os clientes e os pacotes de clientes.
+
+#### Adicione uma segunda loja para testar a troca
+
+Na mesma conexão SQL, depois de definir `@operador_teste_id`, execute o bloco abaixo. Ele cria uma segunda empresa e concede acesso à mesma conta.
+
+```sql
+INSERT INTO empresas (nome_fantasia, telefone_whatsapp, email, senha_hash, ativo)
+VALUES ('Empresa Teste Jardins', '5511000000002', 'empresa-jardins@example.invalid', 'demo-sem-login', TRUE);
+
+SET @segunda_empresa_id = LAST_INSERT_ID();
+
+INSERT INTO usuario_comercios (usuario_id, empresa_id, cargo)
+VALUES (@operador_teste_id, @segunda_empresa_id, 'ADMIN');
+```
+
+Entre novamente no painel para escolher a loja. Cadastre um serviço e um cliente em cada uma e use **Trocar de Loja** para conferir os dados de cada estabelecimento. Para gerar duas lojas com esses cadastros automaticamente, siga a seção **Preparar dados de demonstração**.
 
 ### 4. Faça um atendimento de teste
 

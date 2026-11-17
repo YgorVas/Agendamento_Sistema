@@ -9,93 +9,57 @@ Você precisa de **Node.js 18 ou superior**, **MySQL 8 em execução** e uma con
 ### 1. Prepare o banco
 
 - **Instalação nova.** Abra e execute o arquivo inteiro [Projeto_Agendamento.sql](Agendamento_BD/Projeto_Agendamento.sql). Ele cria o banco `gestao_agendamentos` e as tabelas.
-- **Base existente.** Faça um backup e aplique [001_fila_diaria.sql](Agendamento_BD/migrations/001_fila_diaria.sql), [002_ticket_publico.sql](Agendamento_BD/migrations/002_ticket_publico.sql) e [003_registros_atendimento.sql](Agendamento_BD/migrations/003_registros_atendimento.sql), nessa ordem, antes de atualizar o servidor. As migrações podem ser reaplicadas. Se a fila e o ticket público já estiverem configurados, basta aplicar a terceira.
+- **Base existente.** Faça um backup e aplique as migrações pendentes em ordem numérica, até [004_autenticacao_multi_tenant.sql](Agendamento_BD/migrations/004_autenticacao_multi_tenant.sql), antes de atualizar o servidor. As migrações podem ser reaplicadas.
 
 Configure o backend com uma conta MySQL dedicada. Depois de criar a conta, ajuste o usuário e o host em [PERMISSÃO.sql](Agendamento_BD/PERMISSÃO.sql) e execute o script com uma conta administrativa. Ele concede `SELECT`, `INSERT` e `UPDATE` em `gestao_agendamentos`. Para uma conta que já tenha privilégios adicionais, revise as concessões existentes. A conta usada para criar ou atualizar o esquema precisa de permissões adicionais de administração do banco.
 
-### 2. Identifique a empresa que vai usar o painel
+### 2. Configure o backend
 
-Se a empresa já existe, consulte seu ID.
-
-```sql
-USE gestao_agendamentos;
-SELECT id, nome_fantasia FROM empresas ORDER BY id;
-```
-
-Se a base acabou de ser criada e está vazia, cadastre uma empresa de demonstração. Execute todo o bloco na mesma conexão para obter o ID gerado pelo MySQL.
-
-```sql
-USE gestao_agendamentos;
-
-INSERT INTO empresas (nome_fantasia, telefone_whatsapp, email, senha_hash)
-VALUES ('Empresa Demo', '11900000000', 'demo@example.invalid', 'demo-sem-login');
-
-SELECT LAST_INSERT_ID() AS empresa_id;
-```
-
-O campo `senha_hash` é obrigatório no esquema. O valor acima serve apenas para o cadastro fictício local. A autenticação do painel usa o token gerado no próximo passo.
-
-### 3. Instale o backend e configure o token
-
-Abra o PowerShell na raiz do repositório e execute os comandos abaixo.
+Abra o PowerShell na raiz do repositório.
 
 ```powershell
 cd Agendamento_BackEnd
 npm ci
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```
 
-Gere um token com o ID obtido no passo anterior. Troque `'1'` pelo ID real. O último comando imprime a linha que você vai colar no `.env`.
+No `.env`, ajuste `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` e `DB_NAME`. Cole o segredo gerado em `AUTH_JWT_SECRET`. Mantenha `HOST=127.0.0.1` e `PORT=3000` para o teste local. O envio de WhatsApp é simulado e `WEBHOOK_VERIFY_TOKEN` pode ficar vazio. Mantenha o `.env` fora do Git.
+
+### 3. Prepare a conta de teste
+
+Cadastre uma empresa ativa ou use uma existente. A tabela `empresas` ainda exige `email` e `senha_hash` no cadastro do estabelecimento. A credencial de login fica em `usuarios`.
+
+Gere um hash bcrypt da senha de teste com `bcryptjs` no diretório do backend. No PowerShell 7.2 ou superior, use os comandos abaixo e guarde o hash retornado.
 
 ```powershell
-$empresaId = '1'
-$tokenEmpresa = node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
-$configEmpresa = @{}
-$configEmpresa[$empresaId] = $tokenEmpresa
-"EMPRESA_TOKENS=$($configEmpresa | ConvertTo-Json -Compress)"
+$env:AGENDAMENTO_SENHA_TESTE = Read-Host 'Senha de teste' -MaskInput
+try {
+    node -e "const senha = process.env.AGENDAMENTO_SENHA_TESTE; if (!senha || Buffer.byteLength(senha) > 72) throw Error('Use uma senha de até 72 bytes'); console.log(require('bcryptjs').hashSync(senha, 12))"
+} finally {
+    Remove-Item Env:AGENDAMENTO_SENHA_TESTE
+}
 ```
 
-Abra `Agendamento_BackEnd/.env` e ajuste estas variáveis.
+No cliente MySQL, substitua o hash e o ID da empresa no exemplo. Execute os comandos na mesma conexão.
 
-| Variável | Valor |
-|---|---|
-| `DB_HOST` | Endereço do MySQL. Use `localhost` para o banco na mesma máquina. |
-| `DB_USER` e `DB_PASSWORD` | Usuário e senha da conta MySQL que o backend vai usar. |
-| `DB_NAME` | `gestao_agendamentos`, o nome criado pelo script. |
-| `EMPRESA_TOKENS` | Substitua a linha inteira pela saída do PowerShell. Em uma configuração existente, preserve as outras entradas do objeto JSON. Cada empresa deve ter um token diferente. |
-| `HOST` e `PORT` | Use `127.0.0.1` e `3000` para seguir os exemplos deste guia. |
-| `WEBHOOK_VERIFY_TOKEN` | Pode ficar vazio durante o teste local. |
+```sql
+USE gestao_agendamentos;
+SELECT id, nome_fantasia FROM empresas WHERE ativo = TRUE ORDER BY id;
 
-Guarde o token para conectar o painel e fazer as chamadas da API. Ele dá acesso de operador à empresa. Mantenha o `.env` fora do Git.
+INSERT INTO usuarios (nome, email, senha_hash)
+VALUES ('Operador Demo', 'operador@example.invalid', '<HASH_BCRYPT>');
 
-### 4. Inicie o servidor e cadastre um serviço
-
-Ainda em `Agendamento_BackEnd`, execute `npm start` e mantenha esse terminal aberto. Para desenvolver com reinício automático, use `npm run dev`.
-
-Em outro PowerShell, informe o mesmo token para testar a conexão e cadastrar o serviço **Atendimento**. Se a empresa já tiver um serviço, pule o segundo comando `Invoke-RestMethod`.
-
-```powershell
-$tokenEmpresa = Read-Host 'Token da empresa' -MaskInput
-$api = 'http://127.0.0.1:3000'
-$cabecalhos = @{ Authorization = "Bearer $tokenEmpresa" }
-
-Invoke-RestMethod -Uri "$api/testar-conexao" -Headers $cabecalhos
-
-Invoke-RestMethod -Method Post -Uri "$api/servicos" -Headers $cabecalhos `
-  -ContentType 'application/json' `
-  -Body '{"nome":"Atendimento","duracao_minutos":30,"preco":40}'
+INSERT INTO usuario_comercios (usuario_id, empresa_id, cargo)
+VALUES (LAST_INSERT_ID(), 1, 'ADMIN');
 ```
 
-O teste de conexão retorna `testeDoBanco: 2`. O cadastro retorna o ID do serviço em `servico_id`.
+### 4. Faça um atendimento de teste
 
-> Em versões do PowerShell anteriores à 7.2, remova `-MaskInput` do comando `Read-Host` se o parâmetro estiver indisponível.
-
-### 5. Faça um atendimento de teste
-
-1. Abra o [painel local](http://127.0.0.1:3000/) no navegador. Informe o **ID da empresa** e o **token do operador** e clique em **Conectar**.
-2. No menu do estabelecimento, abra **Registrar cliente no balcão**, selecione um cliente existente ou escolha **Cadastrar novo cliente** e preencha nome e telefone.
-3. Selecione o serviço **Atendimento**, deixe o pacote como **Sem pacote** e clique em **Confirmar Entrada na Fila**. A tela deve mostrar a senha do cliente.
-4. No menu, abra **Fila** e confira se o cliente apareceu. Clique em **Chamar Próximo** e depois em **Concluir Atendimento**.
+1. Execute `npm start` no backend e abra o [login local](http://127.0.0.1:3000/login). Entre com o e-mail e a senha cadastrados. Se a conta tiver mais de uma loja ativa, escolha uma delas.
+2. Em **Serviços e pacotes**, cadastre um serviço, por exemplo, **Atendimento**. Depois, abra **Registrar cliente no balcão**, cadastre ou selecione um cliente e escolha esse serviço.
+3. Clique em **Confirmar Entrada na Fila**. Em **Fila**, confira se o cliente apareceu, clique em **Chamar Próximo** e depois em **Concluir Atendimento**.
+4. Abra **Financeiro** para conferir o lançamento. Use **Trocar de Loja** para mudar de estabelecimento, se houver outro vínculo ativo.
 
 O painel mostra a fila do dia no fuso de São Paulo e a atualiza a cada 10 segundos. Para disponibilizar o sistema em outra máquina, configure `HOST` e sirva a aplicação por HTTPS.
 
@@ -109,20 +73,9 @@ O sistema registra o preço do serviço avulso ou o preço total do pacote divid
 
 ## Como testar um pacote
 
-1. Crie um modelo com `POST /pacotes`. Use, por exemplo, `{"nome":"Pacote de teste","total_sessoes":3,"preco_total":90,"dias_validade":30}`.
-2. Consulte `GET /clientes/empresa/:empresa_id` para obter o ID de um cliente cadastrado. Atribua o modelo com `POST /pacotes/vender`, enviando `cliente_id` e o `pacote_id` retornado no passo anterior.
-3. Em **Registrar cliente no balcão**, selecione esse cliente, o serviço e o pacote. Ao confirmar a entrada, a API desconta uma sessão. Consulte o saldo restante em `GET /pacotes/cliente/:cliente_id`.
-
-Para atribuir o pacote pelo PowerShell, use `$api` e `$cabecalhos` do passo 4 e substitua os IDs pelos valores retornados pela API.
-
-```powershell
-$clienteId = 7
-$pacoteId = 3
-$corpo = @{ cliente_id = $clienteId; pacote_id = $pacoteId } | ConvertTo-Json
-
-Invoke-RestMethod -Method Post -Uri "$api/pacotes/vender" -Headers $cabecalhos `
-  -ContentType 'application/json' -Body $corpo
-```
+1. Em **Serviços e pacotes**, crie um pacote de teste com uma conta `ADMIN` ou `GERENTE`.
+2. Para atribuí-lo a um cliente, use `POST /pacotes/vender` com o JWT de acesso no cabeçalho `Authorization: Bearer <token>` e envie `cliente_id` e `pacote_id`. Consulte os IDs em `GET /clientes` e `GET /pacotes`.
+3. Em **Registrar cliente no balcão**, escolha o cliente, o serviço e o pacote. A entrada desconta uma sessão. A rota `GET /pacotes/cliente/:cliente_id` retorna o saldo restante.
 
 ## Entrada pública e acompanhamento
 
@@ -145,25 +98,33 @@ Sem `TEST_MYSQL_URL`, o Node informa que a suíte de integração foi pulada.
 
 ## Referência da API
 
-As rotas do operador usam `Authorization: Bearer <token>`. Se a URL ou o corpo também contiver `empresa_id`, use o ID associado à credencial. As rotas em `/fila-publica` aceitam requisições sem credencial de operador. O acompanhamento usa a credencial do ticket.
+O painel em `/` e `/dashboard` usa o login em `/login`. Nas rotas autenticadas, envie `Authorization: Bearer <token>`. A loja é definida pelo JWT de acesso. As rotas de gerenciamento de catálogo e financeiro exigem `ADMIN` ou `GERENTE`. `CAIXA` pode atender na fila, cadastrar clientes e operar pacotes de clientes. O catálogo público da fila usa o endereço da loja e o acompanhamento usa a credencial do ticket.
+
+1. Envie `{ "email": "operador@exemplo.com", "senha": "..." }` para `POST /auth/login`. Com um comércio ativo, a resposta inclui `token`, `comercioId` e `cargo`. Com vários, inclui `tokenTemporario` e `comercios`.
+2. Quando houver seleção, envie `{ "comercioId": 1 }` para `POST /auth/selecionar-comercio` com `Authorization: Bearer <tokenTemporario>`. O token temporário expira em 5 minutos.
+3. Chame `GET /servicos` com `Authorization: Bearer <token>`. O token de acesso expira em 1 hora. O servidor confere o vínculo, o cargo e a situação do comércio a cada chamada.
 
 | Método e rota | Uso |
 |---|---|
+| `POST /auth/login` | Valida e-mail e senha e inicia o acesso a um comércio ativo. |
+| `POST /auth/selecionar-comercio` | Troca o token temporário por um JWT vinculado ao comércio escolhido. |
+| `GET /auth/comercios` | Lista os vínculos ativos do usuário e identifica a loja atual. |
+| `POST /auth/iniciar-selecao` | Gera um token temporário para trocar de loja a partir de uma sessão válida. |
+| `GET /servicos` | Lista os serviços do comércio associado ao JWT de acesso. |
 | `GET /testar-conexao` | Testa a conexão MySQL. |
 | `POST /clientes` | Cadastra cliente com `nome` e `telefone_whatsapp`. |
-| `GET /clientes/empresa/:empresa_id` | Lista clientes da empresa. |
+| `GET /clientes` | Lista clientes da empresa. |
 | `POST /servicos` | Cadastra serviço com `nome`, `duracao_minutos` e `preco`. |
-| `GET /servicos/empresa/:empresa_id` | Lista serviços da empresa. |
 | `POST /pacotes` | Cadastra modelo com `nome`, `total_sessoes`, `preco_total` e `dias_validade` opcional. |
-| `GET /pacotes/empresa/:empresa_id` | Lista os modelos de pacotes. |
+| `GET /pacotes` | Lista os modelos de pacotes. |
 | `POST /pacotes/vender` | Atribui um `pacote_id` ao `cliente_id`. |
 | `GET /pacotes/cliente/:cliente_id` | Consulta saldo e validade dos pacotes do cliente. |
 | `POST /agendamentos/fila` | Recebe `cliente_id`, `servico_id`, `data_atendimento` no formato `AAAA-MM-DD` e `cliente_pacote_id` opcional. Retorna o campo `ticket` para a consulta pública. |
 | `GET /fila-publica/:empresa_id/servicos` | Retorna o nome do estabelecimento e o catálogo de serviços. |
 | `POST /fila-publica/:empresa_id/entradas` | Recebe `nome`, `telefone_whatsapp`, `servico_id` e um `ticket` aleatório de 64 caracteres hexadecimais gerado pela página. Registra a entrada na fila do dia e retorna a posição. Reenvie o mesmo ticket ao repetir uma requisição. |
 | `GET /agendamentos/ticket` | Usa `Authorization: Bearer <ticket>`. Retorna `posicao_fila`, `status` e `pessoas_na_frente`, ou `404` se o ticket estiver ausente ou for inválido. |
-| `GET /agendamentos/fila/:empresa_id/:data_atendimento` | Lista a fila do dia. |
-| `GET /agendamentos/proximo/:empresa_id/:data_atendimento` | Consulta o próximo cliente da fila. |
+| `GET /agendamentos/fila/:data_atendimento` | Lista a fila do dia. |
+| `GET /agendamentos/proximo/:data_atendimento` | Consulta o próximo cliente da fila. |
 | `PATCH /agendamentos/status` | Recebe `id` e `status`. Envie `confirmado` para iniciar, `concluido` para concluir ou `cancelado` para cancelar. |
 | `GET /financeiro/resumo` | Retorna os valores e as quantidades de serviços concluídos hoje, na semana atual e no mês atual, além dos últimos 30 registros da empresa. |
 | `GET /financeiro/periodo?tipo=semana&data=2026-11-09` | Retorna o intervalo, o valor total, o valor por serviço e até 30 registros recentes da empresa no período. Os tipos são `dia`, `semana`, `mes` e `ano`. Sem parâmetros, consulta o mês atual. |
@@ -175,8 +136,8 @@ A API permite um atendimento em andamento por empresa e dia. O endpoint público
 | Sintoma | O que conferir |
 |---|---|
 | O painel não abre | Confirme que `npm start` continua rodando e que a URL usa a porta configurada no `.env`. Abra o endereço do servidor no navegador. |
-| `401` ao conectar | Confirme que o token digitado é o mesmo da linha `EMPRESA_TOKENS` e reinicie o servidor se alterou o `.env`. |
-| `403` ao conectar | Confira se o ID informado corresponde à chave associada ao token no JSON. |
+| `401` ao conectar | Confira o e-mail e a senha. Se a sessão expirou, entre novamente. |
+| `403` ao conectar | Confira o vínculo, o cargo do operador e se a loja está ativa. |
 | `500` em `/testar-conexao` | Verifique se o MySQL está rodando e revise `DB_HOST`, `DB_USER`, `DB_PASSWORD` e `DB_NAME`. |
 | A fila falha em uma base antiga | Confira se `agendamentos` tem as colunas `posicao_fila` e `data_atendimento`. Se estiverem ausentes, aplique a migração do primeiro passo. |
-| A lista de serviços está vazia | Cadastre um serviço com o token da empresa conectada e reconecte o painel. |
+| A lista de serviços está vazia | Cadastre um serviço em **Serviços e pacotes** com uma conta de gestão. |

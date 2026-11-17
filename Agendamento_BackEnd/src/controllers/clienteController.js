@@ -14,7 +14,7 @@ const clienteController = {
             }
 
             const novoId = await ClienteModel.criar(
-                req.empresaId,
+                req.comercioId,
                 nome, 
                 telefone_whatsapp, 
                 email || null, 
@@ -34,7 +34,7 @@ const clienteController = {
     // GET /clientes/empresa/:empresa_id - Listar clientes de uma empresa
     listarClientes: async (req, res) => {
         try {
-            const empresa_id = req.empresaId;
+            const empresa_id = req.comercioId;
 
 
             const clientes = await ClienteModel.listarPorEmpresa(empresa_id);

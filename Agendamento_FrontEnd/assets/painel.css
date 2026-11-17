@@ -38,6 +38,35 @@
     outline-offset: 1px;
 }
 
+[hidden] {
+    display: none !important;
+}
+
+#selecao .comercios {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0.75rem 0;
+}
+
+#selecao .comercio {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.75rem;
+    text-align: start;
+    overflow-wrap: anywhere;
+}
+
+#selecao .comercio:hover {
+    background: #f0fdf4;
+}
+
+#selecao .comercio span {
+    color: #475569;
+    font-size: 0.875rem;
+}
+
 #menu-painel a {
     display: flex;
     align-items: center;

@@ -14,7 +14,7 @@ const pacoteController = {
             }
 
             const novoId = await PacoteModel.criarModeloPacote(
-                req.empresaId,
+                req.comercioId,
                 nome, 
                 descricao, 
                 total_sessoes, 
@@ -35,7 +35,7 @@ const pacoteController = {
     // Listar modelos de pacotes de uma empresa
     listarModelos: async (req, res) => {
         try {
-            const empresa_id = req.empresaId;
+            const empresa_id = req.comercioId;
             const pacotes = await PacoteModel.listarModelosPorEmpresa(empresa_id);
             return res.status(200).json(pacotes);
         } catch (error) {
@@ -58,7 +58,7 @@ const pacoteController = {
                 `SELECT p.total_sessoes, p.dias_validade FROM pacotes p
                  JOIN clientes c ON c.empresa_id = p.empresa_id
                  WHERE p.id = ? AND c.id = ? AND p.empresa_id = ?`,
-                [pacote_id, cliente_id, req.empresaId]
+                [pacote_id, cliente_id, req.comercioId]
             );
 
             if (pacotes.length === 0) {
@@ -91,7 +91,7 @@ const pacoteController = {
     listarPacotesCliente: async (req, res) => {
         try {
             const { cliente_id } = req.params;
-            const pacotesCliente = await PacoteModel.listarPacotesDoCliente(cliente_id, req.empresaId);
+            const pacotesCliente = await PacoteModel.listarPacotesDoCliente(cliente_id, req.comercioId);
             return res.status(200).json(pacotesCliente);
         } catch (error) {
             console.error('Erro ao listar pacotes do cliente:', error);

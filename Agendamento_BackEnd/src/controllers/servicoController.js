@@ -1,5 +1,15 @@
 const ServicoModel = require('../models/servicoModel');
 
+async function listarPorEmpresa(empresaId, res) {
+    try {
+        const servicos = await ServicoModel.listarPorEmpresa(empresaId);
+        return res.json(servicos);
+    } catch (error) {
+        console.error('Erro ao buscar serviços:', error);
+        return res.status(500).json({ erro: 'Erro interno ao buscar serviços.' });
+    }
+}
+
 const servicoController = {
     cadastrarServico: async (req, res) => {
         try {
@@ -12,7 +22,7 @@ const servicoController = {
             }
 
             const novoId = await ServicoModel.criar(
-                req.empresaId,
+                req.comercioId,
                 nome, 
                 descricao || null, 
                 duracao_minutos, 
@@ -29,18 +39,7 @@ const servicoController = {
         }
     },
 
-    listarServicos: async (req, res) => {
-        try {
-            const empresa_id = req.empresaId;
-
-
-            const servicos = await ServicoModel.listarPorEmpresa(empresa_id);
-            return res.status(200).json(servicos);
-        } catch (error) {
-            console.error('Erro ao buscar serviços:', error);
-            return res.status(500).json({ erro: 'Erro interno ao buscar serviços.' });
-        }
-    }
+    listarServicos: (req, res) => listarPorEmpresa(req.comercioId, res)
 };
 
 module.exports = servicoController;

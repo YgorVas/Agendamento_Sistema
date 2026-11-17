@@ -1,0 +1,1 @@
+CREATE USER 'agendamento_system'@'localhost' IDENTIFIED BY 'agendamento_system123456#';

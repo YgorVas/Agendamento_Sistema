@@ -1,4 +1,4 @@
-tailwind.config = {
+if (window.tailwind) window.tailwind.config = {
     theme: {
         extend: {
             fontFamily: {

@@ -78,12 +78,21 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         assert.deepEqual(registro, { dia: '2024-01-02', posicao_fila: null, ticket_hash: null });
     });
 
-    const tokenA = randomBytes(32).toString('hex');
-    const tokenB = randomBytes(32).toString('hex');
+    const segredo = randomBytes(32).toString('hex');
+    const { emitirAcesso } = require('../src/services/tokensAuth');
+    const tokenA = emitirAcesso(1, 1, 'ADMIN', segredo);
+    const tokenB = emitirAcesso(2, 2, 'GERENTE', segredo);
+    await db.query(`
+        INSERT INTO usuarios (id, nome, email, senha_hash)
+        VALUES (1, 'Operador A', 'operador-a@example.test', 'fixture'),
+               (2, 'Operador B', 'operador-b@example.test', 'fixture');
+        INSERT INTO usuario_comercios (usuario_id, empresa_id, cargo)
+        VALUES (1, 1, 'ADMIN'), (2, 2, 'GERENTE');
+    `);
     Object.assign(process.env, {
         DB_HOST: config.host, DB_PORT: String(config.port),
         DB_USER: config.user, DB_PASSWORD: config.password, DB_NAME: banco,
-        EMPRESA_TOKENS: JSON.stringify({ 1: tokenA, 2: tokenB })
+        AUTH_JWT_SECRET: segredo
     });
     pool = require('../src/config/db');
     servidor = require('../src/app').listen(0, '127.0.0.1');

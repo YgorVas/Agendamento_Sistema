@@ -24,7 +24,7 @@ const agendamentoController = {
 
             const ticket = randomBytes(32).toString('hex');
             const fila = await AgendamentoModel.entrarNaFila(
-                req.empresaId, Number(cliente_id), Number(servico_id),
+                req.comercioId, Number(cliente_id), Number(servico_id),
                 cliente_pacote_id == null ? null : Number(cliente_pacote_id), data_atendimento, hashTicket(ticket)
             );
             if (fila.erro === 'pacote') {
@@ -62,7 +62,7 @@ const agendamentoController = {
     obterFila: async (req, res) => {
         try {
             const { data_atendimento } = req.params;
-            const empresa_id = req.empresaId;
+            const empresa_id = req.comercioId;
 
             if (!dataValida(data_atendimento)) {
                 return res.status(400).json({ erro: 'Informe uma data válida no formato YYYY-MM-DD.' });
@@ -85,7 +85,7 @@ const agendamentoController = {
                 return res.status(400).json({ erro: 'Informe um ID e um status válidos.' });
             }
 
-            const resultado = await AgendamentoModel.atualizarStatus(req.empresaId, Number(id), status);
+            const resultado = await AgendamentoModel.atualizarStatus(req.comercioId, Number(id), status);
             if (resultado.erro === 'atendimento') {
                 return res.status(409).json({ erro: 'Conclua o atendimento atual antes de chamar o próximo.' });
             }
@@ -98,7 +98,7 @@ const agendamentoController = {
 
             if (resultado.mudou && status === 'concluido') {
                 try {
-                    const proximo = await AgendamentoModel.obterProximoDaFila(req.empresaId, resultado.data);
+                    const proximo = await AgendamentoModel.obterProximoDaFila(req.comercioId, resultado.data);
                     if (proximo?.cliente_telefone) {
                         await WhatsappService.enviarMensagem(
                             proximo.cliente_telefone, 'O atendimento anterior foi concluído. Você é o próximo da fila!'
@@ -120,7 +120,7 @@ const agendamentoController = {
     verProximoDaFila: async (req, res) => {
         try {
             const { data_atendimento } = req.params;
-            const empresa_id = req.empresaId;
+            const empresa_id = req.comercioId;
 
             if (!dataValida(data_atendimento)) {
                 return res.status(400).json({ erro: 'Informe uma data válida no formato YYYY-MM-DD.' });

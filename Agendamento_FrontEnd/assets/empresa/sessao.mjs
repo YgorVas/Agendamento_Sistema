@@ -1,8 +1,6 @@
-import { requisitar } from '../api.mjs';
+export { apiAutenticada as api } from '../auth-api.mjs';
 
 export const state = {
-    empresaId: null,
-    token: null,
     data: null,
     activeClienteId: null,
     clientes: [],
@@ -10,7 +8,3 @@ export const state = {
     pacotes: [],
     agendamentos: []
 };
-
-export function api(caminho, opcoes = {}) {
-    return requisitar(caminho, { ...opcoes, token: state.token });
-}

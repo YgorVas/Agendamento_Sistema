@@ -36,20 +36,6 @@ function ajustarFiltro() {
     ano.disabled = !anual;
 }
 
-export function resetarFinanceiro() {
-    consultaResumo++;
-    consultaPeriodo++;
-    conteudo.hidden = true;
-    resultadoPeriodo.hidden = true;
-    estado.textContent = '';
-    estadoPeriodo.textContent = '';
-    tabela.replaceChildren();
-    legenda.replaceChildren();
-    filtro.reset();
-    ajustarFiltro();
-    atualizar.disabled = false;
-}
-
 function renderizarResumo({ hoje, inicio_semana, inicio_mes, totais }) {
     const fim = formatarData(hoje);
     const periodos = {

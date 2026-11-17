@@ -1,13 +1,7 @@
 import { api, state } from './sessao.mjs';
 import { escapeHtml } from '../html.mjs';
 
-const telaCatalogo = document.getElementById('view-catalogo');
 const moeda = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-
-export function resetarCatalogo() {
-    telaCatalogo.querySelectorAll('form').forEach(formulario => formulario.reset());
-    telaCatalogo.querySelectorAll('[aria-live]').forEach(aviso => aviso.replaceChildren());
-}
 
 function renderLista(tipo, itens, detalhe, preco) {
     const lista = document.getElementById('lista-' + tipo);

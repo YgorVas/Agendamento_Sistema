@@ -5,7 +5,7 @@ const ServicoModel = {
         const [linhas] = await pool.execute(
             `SELECT e.nome_fantasia, s.id, s.nome, s.preco, s.duracao_minutos
              FROM empresas e LEFT JOIN servicos s ON s.empresa_id = e.id
-             WHERE e.id = ? ORDER BY s.nome, s.id`,
+             WHERE e.id = ? AND e.ativo = TRUE ORDER BY s.nome, s.id`,
             [empresaId]
         );
         if (!linhas.length) return null;

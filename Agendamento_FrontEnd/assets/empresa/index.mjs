@@ -1,16 +1,18 @@
 import { api, state } from './sessao.mjs';
+import { encerrarSessao, tokenAtual } from '../auth-api.mjs';
+import { exibirComercios, nomeCargo } from '../selecao-comercio.mjs';
 import { configurarFila, renderEmpresaView } from './fila.mjs';
 import { configurarBalcao, preencherClientes, populateServicoOptionsSelect, carregarPacotesCliente, renderClienteView } from './balcao.mjs';
-import { configurarCatalogo, renderCatalogo, resetarCatalogo } from './catalogo.mjs';
-import { abrirFinanceiro, configurarFinanceiro, resetarFinanceiro } from './financeiro.mjs';
+import { configurarCatalogo, renderCatalogo } from './catalogo.mjs';
+import { abrirFinanceiro, configurarFinanceiro } from './financeiro.mjs';
 import { showToast } from './toast.mjs';
 
 const painel = document.getElementById('painel');
-const linksMenu = document.querySelectorAll('#menu-painel a');
+const linksMenu = [...document.querySelectorAll('#menu-painel a')];
 
 function mostrarTela() {
     if (painel.hidden) return;
-    const destino = [...linksMenu].find(link => link.hash === window.location.hash) ?? linksMenu[0];
+    const destino = linksMenu.find(link => !link.hidden && link.hash === window.location.hash) ?? linksMenu[0];
     for (const link of linksMenu) {
         const nome = link.hash.slice(1);
         const selecionado = link === destino;
@@ -36,9 +38,9 @@ const diaAtual = () => new Intl.DateTimeFormat('sv-SE', {
 
 async function atualizarFila() {
     const data = diaAtual();
-    const token = state.token;
-    const fila = await api(`/agendamentos/fila/${state.empresaId}/${data}`);
-    if (state.token !== token) return;
+    const token = tokenAtual();
+    const fila = await api(`/agendamentos/fila/${data}`);
+    if (tokenAtual() !== token) return;
     if (state.data !== data) state.activeClienteId = null;
     state.data = data;
     state.agendamentos = fila;
@@ -61,75 +63,78 @@ async function executarAcao(acao) {
     }
 }
 
-document.getElementById('form-acesso').addEventListener('submit', evento => {
-    evento.preventDefault();
-    executarAcao(async () => {
-        const campoToken = document.getElementById('empresa-token');
-        const estado = document.getElementById('estado-conexao');
-        const sair = document.getElementById('btn-sair');
-        sair.hidden = true;
-        resetarFinanceiro();
-        resetarCatalogo();
-        painel.hidden = true;
-        estado.textContent = 'Conectando…';
-        state.empresaId = Number(document.getElementById('empresa-id').value);
-        state.token = campoToken.value.trim();
-        state.activeClienteId = null;
-        try {
-            [state.clientes, state.servicos, state.pacotes] = await Promise.all([
-                api(`/clientes/empresa/${state.empresaId}`),
-                api(`/servicos/empresa/${state.empresaId}`),
-                api(`/pacotes/empresa/${state.empresaId}`)
-            ]);
-            preencherClientes();
-            populateServicoOptionsSelect();
-            await carregarPacotesCliente();
-            await atualizarFila();
-            document.getElementById('link-fila-publica').href = '/fila.html?empresa=' + state.empresaId;
-            painel.hidden = false;
-            sair.hidden = false;
-            estado.textContent = `Empresa ${state.empresaId} conectada.`;
-            mostrarTela();
-        } catch (erro) {
-            state.token = null;
-            estado.textContent = 'Falha ao conectar.';
-            throw erro;
-        } finally {
-            campoToken.value = '';
+const estado = document.getElementById('estado-conexao');
+const trocar = document.getElementById('trocar-loja');
+const selecao = document.getElementById('selecao');
+
+async function conectarPainel() {
+    const token = tokenAtual();
+    try {
+        const { comercios, comercioAtual } = await api('/auth/comercios');
+        [state.clientes, state.servicos, state.pacotes] = await Promise.all([
+            api('/clientes'), api('/servicos'), api('/pacotes')
+        ]);
+        if (tokenAtual() !== token) return;
+
+        const podeGerir = ['ADMIN', 'GERENTE'].includes(comercioAtual.cargo);
+        for (const link of linksMenu) {
+            if (link.hash === '#financeiro' || link.hash === '#catalogo') link.hidden = !podeGerir;
         }
-    });
+        document.getElementById('loja-atual').textContent =
+            comercioAtual.nomeFantasia + ' · ' + nomeCargo(comercioAtual.cargo);
+        document.getElementById('link-fila-publica').href =
+            '/fila.html?empresa=' + comercioAtual.comercioId;
+        preencherClientes();
+        populateServicoOptionsSelect();
+        await carregarPacotesCliente();
+        await atualizarFila();
+        if (tokenAtual() !== token) return;
+
+        painel.hidden = false;
+        trocar.hidden = comercios.length < 2;
+        estado.textContent = '';
+        mostrarTela();
+    } catch (erro) {
+        if (tokenAtual() === token) estado.textContent = erro.message + ' Recarregue a página para tentar novamente.';
+    }
+}
+
+document.getElementById('btn-sair').onclick = () => encerrarSessao();
+
+trocar.onclick = () => executarAcao(async () => {
+    const token = tokenAtual();
+    trocar.disabled = true;
+    try {
+        const resposta = await api('/auth/iniciar-selecao', { method: 'POST' });
+        if (tokenAtual() !== token) return;
+        painel.hidden = true;
+        trocar.hidden = true;
+        exibirComercios(selecao, resposta, {
+            concluir: () => location.replace('/dashboard'),
+            voltar: () => {
+                selecao.hidden = true;
+                painel.hidden = false;
+                trocar.hidden = false;
+                trocar.focus();
+            }
+        });
+    } finally {
+        trocar.disabled = false;
+    }
 });
 
-document.getElementById('btn-sair').addEventListener('click', () => {
-    if (ocupado) return;
-    state.token = null;
-    state.empresaId = null;
-    state.activeClienteId = null;
-    state.clientes = [];
-    state.agendamentos = [];
-    state.servicos = [];
-    state.pacotes = [];
-    preencherClientes();
-    populateServicoOptionsSelect();
-    carregarPacotesCliente();
-    renderAll();
-    resetarFinanceiro();
-    resetarCatalogo();
-    document.getElementById('form-entrar-fila').reset();
-    painel.hidden = true;
-    document.getElementById('btn-sair').hidden = true;
-    document.getElementById('estado-conexao').textContent = 'Conecte-se para carregar a fila.';
+window.addEventListener('pageshow', evento => {
+    if (evento.persisted) location.reload();
 });
 
 setInterval(async () => {
-    if (!state.token || ocupado || carregandoFila) return;
+    if (!tokenAtual() || painel.hidden || ocupado || carregandoFila) return;
     carregandoFila = true;
-    const estado = document.getElementById('estado-conexao');
     try {
         await atualizarFila();
-        if (state.token) estado.textContent = `Empresa ${state.empresaId} conectada.`;
+        estado.textContent = '';
     } catch {
-        if (state.token) estado.textContent = 'Fila desatualizada. Tentando reconectar…';
+        if (tokenAtual()) estado.textContent = 'Fila desatualizada. Tentando reconectar…';
     } finally {
         carregandoFila = false;
     }
@@ -144,3 +149,6 @@ configurarFila({ executarAcao, atualizarFila });
 configurarBalcao({ executarAcao, atualizarFila, diaAtual });
 configurarCatalogo({ executarAcao, atualizarServicos: populateServicoOptionsSelect });
 configurarFinanceiro();
+
+if (tokenAtual()) conectarPainel();
+else encerrarSessao();

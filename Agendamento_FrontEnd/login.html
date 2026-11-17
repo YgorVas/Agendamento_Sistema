@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Entrar | SistemaAgendamento</title>
+    <link rel="stylesheet" href="/assets/acesso.css">
+    <script type="module" src="/assets/login.mjs"></script>
+</head>
+<body class="pagina-acesso">
+    <main class="acesso">
+        <aside class="marca">
+            <div class="marca-icone" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                    <rect x="3" y="5" width="18" height="16" rx="3"/>
+                    <path d="M7 3v5m10-5v5M3 10h18m-13 5 3 3 5-5"/>
+                </svg>
+            </div>
+            <span>SistemaAgendamento</span>
+        </aside>
+        <div class="conteudo-acesso">
+            <section id="login" aria-labelledby="titulo-login">
+                <h1 id="titulo-login" tabindex="-1">Entrar no painel</h1>
+                <p class="introducao">Use o e-mail e a senha da sua conta.</p>
+                <p id="aviso-sessao" class="aviso" role="status" hidden></p>
+                <form id="form-login" method="post" action="/auth/login">
+                    <label for="email">E-mail</label>
+                    <input id="email" name="email" type="email" autocomplete="username" maxlength="254" required>
+                    <label for="senha">Senha</label>
+                    <div class="campo-senha">
+                        <input id="senha" name="senha" type="password" autocomplete="current-password" required>
+                        <button id="mostrar-senha" type="button" aria-controls="senha">Mostrar</button>
+                    </div>
+                    <p id="erro-login" class="erro" role="alert"></p>
+                    <button id="entrar" type="submit" class="primario">
+                        <span class="spinner" aria-hidden="true" hidden></span>
+                        <span id="texto-entrar">Entrar</span>
+                    </button>
+                </form>
+            </section>
+            <section id="selecao" aria-labelledby="titulo-selecao" hidden>
+                <h2 id="titulo-selecao" tabindex="-1">Escolha uma loja</h2>
+                <p class="introducao">Selecione a loja que deseja acessar.</p>
+                <div class="comercios"></div>
+                <p class="erro" role="alert"></p>
+                <button type="button" class="secundario" data-voltar>Voltar ao login</button>
+            </section>
+        </div>
+    </main>
+</body>
+</html>

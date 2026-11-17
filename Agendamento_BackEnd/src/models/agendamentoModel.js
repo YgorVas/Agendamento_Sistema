@@ -8,7 +8,7 @@ async function transacaoDaEmpresa(empresaId, executar) {
         await conexao.beginTransaction();
         // Serializa entradas e mudanças de status da mesma empresa.
         const [empresas] = await conexao.execute(
-            'SELECT id FROM empresas WHERE id = ? FOR UPDATE', [empresaId]
+            'SELECT id FROM empresas WHERE id = ? AND ativo = TRUE FOR UPDATE', [empresaId]
         );
         const resultado = empresas.length ? await executar(conexao) : { erro: 'empresa' };
         await conexao.commit();
@@ -95,7 +95,9 @@ const AgendamentoModel = {
                       AND fila.data_atendimento = ticket.data_atendimento
                       AND fila.posicao_fila < ticket.posicao_fila
                       AND fila.status IN ('agendado', 'confirmado')) AS pessoas_na_frente
-            FROM agendamentos ticket WHERE ticket.ticket_hash = ?
+            FROM agendamentos ticket
+            JOIN empresas e ON e.id = ticket.empresa_id
+            WHERE ticket.ticket_hash = ? AND e.ativo = TRUE
         `, [ticketHash]);
         return linhas[0];
     },

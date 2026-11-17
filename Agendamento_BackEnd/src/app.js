@@ -13,10 +13,14 @@ const app = express();
 
 app.use(express.json());
 
-app.use(express.static(path.resolve(__dirname, '../../Agendamento_FrontEnd')));
+const frontend = path.resolve(__dirname, '../../Agendamento_FrontEnd');
+app.get(['/dashboard', '/dashboard.html'], (req, res) => res.sendFile(path.join(frontend, 'index.html')));
+app.use(express.static(frontend, {
+    extensions: ['html']
+}));
 
 // Rota de teste do banco
-app.get('/testar-conexao', require('./middleware/empresa'), async (req, res) => {
+app.get('/testar-conexao', require('./middleware/verificarInstancia'), async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT 1 + 1 AS resultado');
         res.json({ mensagem: 'Conexão com o MySQL bem-sucedida!', testeDoBanco: rows[0].resultado });
@@ -26,6 +30,7 @@ app.get('/testar-conexao', require('./middleware/empresa'), async (req, res) => 
 });
 
 // Registrando os módulos das rotas
+app.use('/auth', require('./routes/authRoutes'));
 app.use('/clientes', clienteRoutes);
 app.use('/servicos', servicoRoutes);
 app.use('/agendamentos', agendamentoRoutes);

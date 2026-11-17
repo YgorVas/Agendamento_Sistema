@@ -14,6 +14,7 @@ export async function requisitar(caminho, { method = 'GET', body, token } = {}) 
     if (!resposta.ok || dados === null) {
         const erro = new Error(dados?.erro || 'Não foi possível consultar o sistema.');
         erro.status = resposta.status;
+        erro.codigo = dados?.codigo;
         throw erro;
     }
     return dados;

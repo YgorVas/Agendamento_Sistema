@@ -1,4 +1,5 @@
 import { api, state } from './sessao.mjs';
+import { tokenAtual } from '../auth-api.mjs';
 import { showToast } from './toast.mjs';
 
 export function preencherClientes(clienteId = '') {
@@ -20,7 +21,7 @@ export function populateServicoOptionsSelect() {
 
 export async function carregarPacotesCliente() {
     const cliente = document.getElementById('select-cliente').value;
-    const token = state.token;
+    const token = tokenAtual();
     const cadastro = document.getElementById('cadastro-cliente');
     const select = document.getElementById('select-pacote');
     cadastro.hidden = Boolean(cliente);
@@ -30,7 +31,7 @@ export async function carregarPacotesCliente() {
     if (!cliente) return;
 
     const pacotes = await api(`/pacotes/cliente/${cliente}`);
-    if (state.token !== token || document.getElementById('select-cliente').value !== cliente) return;
+    if (tokenAtual() !== token || document.getElementById('select-cliente').value !== cliente) return;
     for (const pacote of pacotes.filter(p => p.status === 'ativo' && p.sessoes_restantes > 0)) {
         select.add(new Option(`${pacote.pacote_nome} (${pacote.sessoes_restantes} restantes)`, pacote.id));
     }

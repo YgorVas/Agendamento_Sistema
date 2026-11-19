@@ -6,24 +6,17 @@ const clienteController = {
         try {
             const { nome, telefone_whatsapp, email, observacoes } = req.body;
 
-            // Validação simples dos campos obrigatórios
-            if (!nome || !telefone_whatsapp) {
-                return res.status(400).json({ 
-                    erro: 'Os campos nome e telefone_whatsapp são obrigatórios.'
-                });
+            if (typeof nome !== 'string' || !nome.trim() || nome.trim().length > 100 ||
+                typeof telefone_whatsapp !== 'string' || telefone_whatsapp.length > 20 ||
+                !/^\+?[\d ().-]+$/.test(telefone_whatsapp) || !/^\d{10,15}$/.test(telefone_whatsapp.replace(/\D/g, ''))) {
+                return res.status(400).json({ erro: 'Informe nome e telefone válidos.' });
             }
-
-            const novoId = await ClienteModel.criar(
-                req.comercioId,
-                nome, 
-                telefone_whatsapp, 
-                email || null, 
-                observacoes || null
+            const resultado = await ClienteModel.criarOuEncontrar(
+                req.comercioId, nome.trim(), telefone_whatsapp.trim(), email || null, observacoes || null
             );
-
-            return res.status(201).json({
-                mensagem: 'Cliente cadastrado com sucesso!',
-                cliente_id: novoId
+            return res.status(resultado.existente ? 200 : 201).json({
+                mensagem: resultado.existente ? 'Cliente já cadastrado.' : 'Cliente cadastrado com sucesso!',
+                cliente_id: resultado.cliente.id, existente: resultado.existente, cliente: resultado.cliente
             });
         } catch (error) {
             console.error('Erro ao cadastrar cliente:', error);

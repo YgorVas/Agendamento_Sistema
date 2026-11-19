@@ -5,6 +5,9 @@ const tokens = require('../services/tokensAuth');
 const verificarInstancia = require('../middleware/verificarInstancia');
 
 const router = express.Router();
+const limitarRequisicoes = require('../middleware/limitarRequisicoes');
+const limitarLogin = limitarRequisicoes({ limite: 30, janelaMs: 15 * 60 * 1000 });
+const limitarCadastro = limitarRequisicoes({ limite: 10, janelaMs: 60 * 60 * 1000 });
 const hashParaUsuarioInexistente = bcrypt.hashSync('credencial-inexistente', 12);
 
 router.use((req, res, next) => {
@@ -16,7 +19,38 @@ router.use((req, res, next) => {
     next();
 });
 
-router.post('/login', async (req, res) => {
+router.post('/cadastrar', limitarCadastro, async (req, res) => {
+    const { empresa, nome, email, telefone, senha } = req.body ?? {};
+    if (![empresa, nome, email, telefone, senha].every(v => typeof v === 'string') ||
+        !empresa.trim() || empresa.trim().length > 100 || !nome.trim() || nome.trim().length > 100 ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || email.trim().length > 100 ||
+        !/^\+?[\d ().-]+$/.test(telefone) || !/^\d{10,15}$/.test(telefone.replace(/\D/g, '')) ||
+        senha.length < 8 || Buffer.byteLength(senha) > 72) {
+        return res.status(400).json({ erro: 'Confira os dados e use uma senha de pelo menos 8 caracteres.' });
+    }
+    const pool = require('../config/db');
+    const hash = await bcrypt.hash(senha, 12);
+    const conexao = await pool.getConnection();
+    try {
+        await conexao.beginTransaction();
+        const emailNormalizado = email.trim().toLowerCase();
+        const [novaEmpresa] = await conexao.execute(
+            'INSERT INTO empresas (nome_fantasia, telefone_whatsapp, email, senha_hash) VALUES (?, ?, ?, ?)',
+            [empresa.trim(), telefone.replace(/\D/g, ''), emailNormalizado, hash]);
+        const [usuario] = await conexao.execute('INSERT INTO usuarios (nome, email, senha_hash) VALUES (?, ?, ?)',
+            [nome.trim(), emailNormalizado, hash]);
+        await conexao.execute("INSERT INTO usuario_comercios (usuario_id, empresa_id, cargo) VALUES (?, ?, 'ADMIN')",
+            [usuario.insertId, novaEmpresa.insertId]);
+        await conexao.commit();
+        return res.status(201).json({ token: tokens.emitirAcesso(usuario.insertId, novaEmpresa.insertId, 'ADMIN', res.locals.segredoJwt) });
+    } catch (erro) {
+        await conexao.rollback();
+        if (erro.code === 'ER_DUP_ENTRY') return res.status(409).json({ erro: 'Este e-mail já está cadastrado.' });
+        throw erro;
+    } finally { conexao.release(); }
+});
+
+router.post('/login', limitarLogin, async (req, res) => {
     const { email, senha } = req.body ?? {};
     const emailNormalizado = typeof email === 'string' ? email.trim() : '';
     if (!emailNormalizado || emailNormalizado.length > 254 ||

@@ -127,7 +127,8 @@ export function configurarBalcao({ executarAcao, atualizarFila, diaAtual }) {
                     method: 'POST', body: { nome, telefone_whatsapp: telefone }
                 });
                 clienteId = novo.cliente_id;
-                state.clientes.push({ id: clienteId, nome, telefone_whatsapp: telefone });
+                if (!state.clientes.some(cliente => cliente.id === clienteId)) state.clientes.push(novo.cliente);
+                if (novo.existente) showToast('Cliente encontrado', 'O cadastro existente foi utilizado.', 'success');
                 preencherClientes(clienteId);
             }
             const data = diaAtual();

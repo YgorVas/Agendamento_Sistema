@@ -67,3 +67,20 @@ form.onsubmit = async event => {
         texto.textContent = 'Entrar';
     }
 };
+
+const cadastro = document.querySelector('#cadastro');
+const formCadastro = document.querySelector('#form-cadastro');
+document.querySelector('#abrir-cadastro').onclick = event => { event.preventDefault(); login.hidden = true; cadastro.hidden = false; };
+document.querySelector('#voltar-login').onclick = () => { cadastro.hidden = true; login.hidden = false; };
+formCadastro.onsubmit = async event => {
+    event.preventDefault();
+    const botaoCadastro = formCadastro.querySelector('button');
+    const erro = formCadastro.querySelector('.erro');
+    erro.textContent = ''; botaoCadastro.disabled = true;
+    try {
+        const resposta = await fetch('/auth/cadastrar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(formCadastro))) });
+        const dados = await resposta.json();
+        if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível cadastrar.');
+        salvarSessao(dados.token); abrirDashboard();
+    } catch (e) { erro.textContent = e.message; } finally { botaoCadastro.disabled = false; }
+};

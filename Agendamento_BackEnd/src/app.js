@@ -10,8 +10,10 @@ const pacoteRoutes = require('./routes/pacoteRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 
 const app = express();
+// Ative apenas quando o servidor estiver acessível exclusivamente por um proxy local confiável.
+if (process.env.TRUST_PROXY_LOCAL === 'true') app.set('trust proxy', 'loopback');
 
-app.use(express.json());
+app.use(express.json({ verify: (req, res, buffer) => { req.rawBody = buffer; } }));
 
 const frontend = path.resolve(__dirname, '../../Agendamento_FrontEnd');
 app.get(['/dashboard', '/dashboard.html'], (req, res) => res.sendFile(path.join(frontend, 'index.html')));

@@ -53,11 +53,8 @@ const AgendamentoModel = {
             );
             if (!servicos.length) return { erro: 'servico' };
 
-            const [clientes] = await conexao.execute(
-                'SELECT id FROM clientes WHERE empresa_id = ? AND nome = ? AND telefone_whatsapp = ? ORDER BY id LIMIT 1',
-                [empresaId, nome, telefone]
-            );
-            const clienteId = clientes[0]?.id ??
+            const cliente = await ClienteModel.buscarPorTelefone(empresaId, telefone, conexao);
+            const clienteId = cliente?.id ??
                 await ClienteModel.criar(empresaId, nome, telefone, null, null, conexao);
             return inserirNaFila(conexao, empresaId, clienteId, servicoId, null, data, ticketHash);
         }),
@@ -127,7 +124,7 @@ const AgendamentoModel = {
     atualizarStatus: (empresaId, id, status) =>
         transacaoDaEmpresa(empresaId, async (conexao) => {
             const [registros] = await conexao.execute(
-                `SELECT status, DATE_FORMAT(data_atendimento, '%Y-%m-%d') AS data
+                `SELECT status, cliente_pacote_id, DATE_FORMAT(data_atendimento, '%Y-%m-%d') AS data
                  FROM agendamentos WHERE id = ? AND empresa_id = ?`,
                 [id, empresaId]
             );
@@ -149,6 +146,14 @@ const AgendamentoModel = {
             await conexao.execute(
                 'UPDATE agendamentos SET status = ? WHERE id = ? AND empresa_id = ?', [status, id, empresaId]
             );
+            if (status === 'cancelado' && atual.status === 'agendado' && atual.cliente_pacote_id) {
+                // O débito ocorreu na entrada; devolva-o apenas antes do início do atendimento.
+                await conexao.execute(
+                    `UPDATE cliente_pacotes SET sessoes_restantes = sessoes_restantes + 1,
+                         status = IF(status = 'concluido', 'ativo', status)
+                     WHERE id = ?`, [atual.cliente_pacote_id]
+                );
+            }
             if (status === 'concluido') await registrarAtendimento(conexao, empresaId, id);
             return { mudou: true, data: atual.data };
         }),

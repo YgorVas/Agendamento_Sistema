@@ -142,6 +142,30 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         assert.equal(total, 1);
     });
 
+    await t.test('cancela pacote antes do início com estorno único', async () => {
+        await db.query(`INSERT INTO pacotes (id, empresa_id, nome, total_sessoes, preco_total)
+            VALUES (3, 1, 'Pacote para estorno', 1, 20);
+            INSERT INTO cliente_pacotes (id, cliente_id, pacote_id, sessoes_restantes, data_validade)
+            VALUES (3, 1, 3, 1, CURRENT_DATE + INTERVAL 30 DAY)`);
+        const pedido = { ...entrada, cliente_pacote_id: 3 };
+        const primeira = await entrar(pedido);
+        assert.equal(primeira.status, 201);
+        const { agendamento_id: id } = await primeira.json();
+        const mudar = (registro, status) => requisicao('/agendamentos/status', tokenA, 'PATCH', { id: registro, status });
+        const cancelamentos = await Promise.all([mudar(id, 'cancelado'), mudar(id, 'cancelado')]);
+        assert.deepEqual(cancelamentos.map(resposta => resposta.status), [200, 200]);
+        const [[estornado]] = await db.query('SELECT sessoes_restantes, status FROM cliente_pacotes WHERE id = 3');
+        assert.deepEqual(estornado, { sessoes_restantes: 1, status: 'ativo' });
+
+        const segunda = await entrar(pedido);
+        assert.equal(segunda.status, 201);
+        const { agendamento_id: iniciado } = await segunda.json();
+        assert.equal((await mudar(iniciado, 'confirmado')).status, 200);
+        assert.equal((await mudar(iniciado, 'cancelado')).status, 200);
+        const [[consumido]] = await db.query('SELECT sessoes_restantes, status FROM cliente_pacotes WHERE id = 3');
+        assert.deepEqual(consumido, { sessoes_restantes: 0, status: 'concluido' });
+    });
+
     await t.test('credenciais, cadastros e registros ficam isolados por empresa', async () => {
         assert.equal((await requisicao('/agendamentos/fila/1/' + dia, 'inválido')).status, 401);
         assert.equal((await requisicao('/agendamentos/fila/1/' + dia, tokenB)).status, 403);
@@ -174,6 +198,27 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         assert.equal(cancelar.status, 200);
         const cancelado = await requisicao('/agendamentos/ticket', ticket);
         assert.equal((await cancelado.json()).status, 'cancelado');
+    });
+
+    await t.test('balcão e entrada pública reutilizam cliente pelo telefone em cada empresa', async () => {
+        const pedido = { nome: 'Cliente original', telefone_whatsapp: '(11) 98888-7777' };
+        const criar = (token, dados) => requisicao('/clientes', token, 'POST', dados);
+        const respostas = await Promise.all([criar(tokenA, pedido), criar(tokenA, pedido)]);
+        assert.deepEqual(respostas.map(r => r.status).sort(), [200, 201]);
+        const clientes = await Promise.all(respostas.map(r => r.json()));
+        assert.equal(clientes[0].cliente_id, clientes[1].cliente_id);
+        const outra = await criar(tokenB, pedido);
+        assert.equal(outra.status, 201);
+        const outroId = (await outra.json()).cliente_id;
+        assert.notEqual(outroId, clientes[0].cliente_id);
+        await db.execute('DELETE FROM clientes WHERE id = ? AND empresa_id = 2', [outroId]);
+        const publica = await fetch(base + '/fila-publica/1/entradas', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nome: 'Nome diferente', telefone_whatsapp: '5511988887777', servico_id: 1, ticket: randomBytes(32).toString('hex') })
+        });
+        assert.equal(publica.status, 201);
+        const [registros] = await db.execute("SELECT nome FROM clientes WHERE empresa_id = 1 AND REGEXP_REPLACE(telefone_whatsapp, '[^0-9]', '') IN (?, ?)", ['11988887777', '5511988887777']);
+        assert.deepEqual(registros.map(c => c.nome), ['Cliente original']);
     });
 
     await t.test('cliente entra pelo catálogo público e repete a requisição sem duplicar a entrada', async () => {

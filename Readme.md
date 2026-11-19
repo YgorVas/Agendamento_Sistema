@@ -1,6 +1,6 @@
 # Sistema de Agendamento B2B e Fila Diária
 
-O painel permite cadastrar clientes, gerar senhas de atendimento e chamar, concluir ou cancelar atendimentos. A API Express grava a fila no MySQL e também gerencia serviços, pacotes e saldos de sessões. O envio de mensagens pelo WhatsApp é simulado.
+O painel permite cadastrar clientes, gerar senhas de atendimento e chamar, concluir ou cancelar atendimentos. A API Express grava a fila no MySQL e também gerencia serviços, pacotes e saldos de sessões. O chatbot pode ser conectado à WhatsApp Cloud API; os avisos automáticos ao próximo cliente continuam simulados.
 
 ## Primeira execução no Windows
 
@@ -27,6 +27,8 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 No `.env`, ajuste `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` e `DB_NAME`. Cole o segredo gerado em `AUTH_JWT_SECRET`. Mantenha `HOST=127.0.0.1` e `PORT=3000` para o teste local. O envio de WhatsApp é simulado e `WEBHOOK_VERIFY_TOKEN` pode ficar vazio. Mantenha o `.env` fora do Git.
 
 ### 3. Cadastre uma empresa e prepare a conta de teste
+
+Acesse `/login` e escolha **Cadastrar minha empresa** para criar a empresa e sua conta administradora. O e-mail deve estar disponível e a senha deve ter pelo menos oito caracteres. Depois do cadastro, o painel é aberto automaticamente. Os blocos SQL abaixo são uma alternativa para preparar contas de teste manualmente.
 
 Após preparar o banco, abra uma conexão no MySQL Workbench e selecione o banco definido em `DB_NAME`. Os exemplos abaixo usam `gestao_agendamentos`. O cadastro da empresa fica em `empresas`, a conta usada para entrar no painel fica em `usuarios` e o acesso a cada loja fica em `usuario_comercios`.
 
@@ -139,11 +141,19 @@ Entre em `/login`, escolha uma das lojas e use **Trocar de Loja** para conferir 
 
 ### Link temporário de demonstração
 
-Com o servidor local em execução na porta 3000, use o executável oficial `cloudflared` para abrir o túnel temporário.
+Com o servidor local em execução na porta 3000, instale o `cloudflared` pelo PowerShell, caso ainda não esteja instalado:
+
+```powershell
+winget install --id Cloudflare.cloudflared --exact --accept-package-agreements --accept-source-agreements
+```
+
+Após a instalação, feche e abra novamente o PowerShell para atualizar o caminho dos programas. Em seguida, abra o túnel temporário:
 
 ```powershell
 cloudflared tunnel --url http://127.0.0.1:3000 --protocol http2 --no-autoupdate
 ```
+
+Se o comando `cloudflared` não for reconhecido, confira se a instalação terminou com sucesso e se o PowerShell foi reaberto. Mantenha o backend em execução em outro terminal.
 
 Abra o endereço HTTPS exibido no terminal, acrescentando `/login`, e compartilhe o link e as credenciais de demonstração com o testador. Mantenha o computador, o servidor e o túnel em execução durante o teste. O encerramento do túnel desativa o link, e uma nova execução gera outro endereço. Consulte as [instruções oficiais da Cloudflare](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
 
@@ -160,11 +170,11 @@ O sistema registra o preço do serviço avulso ou o preço total do pacote divid
 1. Em **Serviços e pacotes**, crie um pacote de teste com uma conta `ADMIN` ou `GERENTE`.
 2. Na mesma tela, em **Atribuir pacote a cliente**, selecione um cliente cadastrado e um modelo de pacote. Clique em **Atribuir pacote**. O painel confirma o saldo inicial de sessões e o prazo de validade.
 3. Em **Registrar cliente no balcão**, escolha o cliente, o serviço e o pacote. A entrada desconta uma sessão. A rota `GET /pacotes/cliente/:cliente_id` retorna o saldo restante.
-4. Volte a **Serviços e pacotes**, selecione o cliente e confira **Saldo de pacotes do cliente**, com sessões restantes, validade e situação.
+4. Volte a **Serviços e pacotes**, selecione o cliente e confira **Saldo de pacotes do cliente**, com sessões restantes, validade e situação. Se a entrada for cancelada antes de iniciar o atendimento, a sessão é devolvida ao pacote. Após o início, o cancelamento não estorna a sessão; a validade original do pacote é mantida.
 
 ## Entrada pública e acompanhamento
 
-No painel conectado, use **Abrir página de entrada dos clientes** para obter o link do estabelecimento, como `/fila.html?empresa=1`. O cliente informa nome e WhatsApp, escolhe um serviço e segue direto para o ticket. O uso de pacotes é registrado pela equipe no balcão.
+No painel conectado, use **Abrir página de entrada dos clientes** para obter o link do estabelecimento, como `/fila.html?empresa=1`. O cliente informa nome e WhatsApp, escolhe um serviço e segue direto para o ticket. Cadastros existentes na mesma empresa são encontrados pelo telefone, ignorando pontuação e o prefixo brasileiro 55; o nome anterior é preservado. O uso de pacotes é registrado pela equipe no balcão.
 
 Ao registrar pelo balcão, use **Abrir link do cliente** na confirmação para compartilhar o ticket individual. Use o endereço HTTPS do sistema quando compartilhar links fora da máquina local. O ticket mostra a posição e o andamento daquela entrada.
 
@@ -226,3 +236,13 @@ A API permite um atendimento em andamento por empresa e dia. O endpoint público
 | `500` em `/testar-conexao` | Verifique se o MySQL está rodando e revise `DB_HOST`, `DB_USER`, `DB_PASSWORD` e `DB_NAME`. |
 | A fila falha em uma base antiga | Confira se `agendamentos` tem as colunas `posicao_fila` e `data_atendimento`. Se estiverem ausentes, aplique a migração do primeiro passo. |
 | A lista de serviços está vazia | Cadastre um serviço em **Serviços e pacotes** com uma conta de gestão. |
+
+
+## Chatbot no WhatsApp
+
+Para uma instância vinculada a uma única empresa, configure no `.env` `WHATSAPP_APP_SECRET`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_EMPRESA_ID`, `WHATSAPP_API_VERSION` (por exemplo, a versão configurada na Meta), `PUBLIC_BASE_URL` (endereço HTTPS público) e `WEBHOOK_VERIFY_TOKEN`. Configure na Meta o webhook HTTPS `/api/webhook/whatsapp` e assine eventos de mensagens. A assinatura das notificações é validada com o segredo do aplicativo. Uma mensagem de texto recebida retorna o link de entrada; se o número já tiver uma entrada ativa hoje, a resposta também informa a senha e quantas pessoas estão à frente. O número cadastrado deve incluir DDD; o prefixo brasileiro 55 é opcional. O envio depende das credenciais, da configuração e disponibilidade da Meta. Este chatbot atende uma empresa por instância do servidor.
+
+
+### Proteção das rotas públicas
+
+O servidor limita temporariamente tentativas de login, cadastro de empresa e entrada pública por endereço IP. Os limites são locais ao processo e reiniciam quando o servidor é reiniciado; para múltiplas instâncias, use um mecanismo compartilhado. Por padrão, o servidor não confia em cabeçalhos de proxy, portanto clientes atrás de um mesmo proxy podem compartilhar o limite. Configure `TRUST_PROXY_LOCAL=true` somente quando o backend aceitar conexões exclusivamente de um proxy local confiável, configurado para substituir os cabeçalhos de endereço do cliente. Para exposição em produção, configure limites também no proxy e valide a origem dos endereços.

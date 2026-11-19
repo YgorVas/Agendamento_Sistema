@@ -2,10 +2,10 @@ const pool = require('../config/db');
 
 const PacoteModel = {
     // 1. Cadastrar um modelo de pacote/combo da empresa
-    criarModeloPacote: async (empresa_id, nome, descricao, total_sessoes, preco_total, dias_validade) => {
+    criarModeloPacote: async (empresa_id, nome, descricao, total_sessoes, preco_total, dias_validade, servico_id) => {
         const query = `
-            INSERT INTO pacotes (empresa_id, nome, descricao, total_sessoes, preco_total, dias_validade)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO pacotes (empresa_id, nome, descricao, total_sessoes, preco_total, dias_validade, servico_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         `;
         const [resultado] = await pool.execute(query, [
             empresa_id, 
@@ -13,7 +13,8 @@ const PacoteModel = {
             descricao || null, 
             total_sessoes, 
             preco_total, 
-            dias_validade || 30
+            dias_validade || 30,
+            servico_id
         ]);
         return resultado.insertId;
     },
@@ -21,7 +22,7 @@ const PacoteModel = {
     // 2. Listar modelos de pacotes de uma empresa
     listarModelosPorEmpresa: async (empresa_id) => {
         const query = `
-            SELECT id, nome, descricao, total_sessoes, preco_total, dias_validade
+            SELECT id, nome, descricao, total_sessoes, preco_total, dias_validade, servico_id
             FROM pacotes
             WHERE empresa_id = ?
         `;
@@ -51,6 +52,7 @@ const PacoteModel = {
             SELECT 
                 cp.id, 
                 p.nome AS pacote_nome,
+                p.servico_id,
                 p.total_sessoes,
                 cp.sessoes_restantes, 
                 cp.data_compra, 

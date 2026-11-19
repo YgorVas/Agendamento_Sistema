@@ -53,8 +53,9 @@ function renderLista(tipo, itens, detalhe, preco) {
 
 export function renderCatalogo() {
     renderLista('servico', state.servicos, item => `${Number(item.duracao_minutos)} min`, 'preco');
+    preencherOpcoes(document.querySelector('#form-pacote [name=servico_id]'), state.servicos, 'Selecione o serviço', servico => servico.nome);
     renderLista('pacote', state.pacotes,
-        item => `${Number(item.total_sessoes)} sessões · ${Number(item.dias_validade)} dias de validade`,
+        item => `${escapeHtml(state.servicos.find(servico => servico.id === item.servico_id)?.nome || 'Serviço não vinculado')} · ${Number(item.total_sessoes)} sessões · ${Number(item.dias_validade)} dias de validade`,
         'preco_total');
     preencherOpcoes(clienteAtribuicao, state.clientes,
         state.clientes.length ? 'Selecione o cliente' : 'Nenhum cliente cadastrado',
@@ -150,7 +151,7 @@ export function configurarCatalogo({ executarAcao, atualizarServicos, aoAtribuir
     });
     configurarCadastro({
         tipo: 'pacote', rota: '/pacotes', chaveId: 'pacote_id',
-        camposNumericos: ['total_sessoes', 'preco_total', 'dias_validade'],
+        camposNumericos: ['total_sessoes', 'preco_total', 'dias_validade', 'servico_id'],
         aoSalvar: pacote => state.pacotes.push(pacote)
     });
 }

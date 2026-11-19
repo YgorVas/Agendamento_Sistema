@@ -79,6 +79,8 @@ CREATE TABLE pacotes (
     total_sessoes INT NOT NULL,
     preco_total DECIMAL(10, 2) NOT NULL,
     dias_validade INT DEFAULT 30, -- Ex: Pacote válido por 30, 60 ou 90 dias
+    servico_id INT NULL,
+    FOREIGN KEY (servico_id) REFERENCES servicos(id),
     FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 

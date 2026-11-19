@@ -28,7 +28,7 @@ async function prepararDemo() {
                 (_, comando) => comando + ' ' + mysql.escapeId(nomeBanco)));
         }
         for (const arquivo of ['001_fila_diaria.sql', '002_ticket_publico.sql',
-            '003_registros_atendimento.sql', '004_autenticacao_multi_tenant.sql']) {
+            '003_registros_atendimento.sql', '004_autenticacao_multi_tenant.sql', '005_servicos_por_entrada.sql']) {
             const sql = await readFile(path.join(sqlDir, 'migrations', arquivo), 'utf8');
             await db.query(sql.replace(/^USE gestao_agendamentos;/m,
                 'USE ' + mysql.escapeId(nomeBanco) + ';'));

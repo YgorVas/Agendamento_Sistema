@@ -37,12 +37,13 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         }
     });
 
-    const [schema, migracaoFila, migracaoTicket, migracaoFinanceiro, migracaoAuth] = await Promise.all([
+    const [schema, migracaoFila, migracaoTicket, migracaoFinanceiro, migracaoAuth, migracaoServicos] = await Promise.all([
         readFile(path.join(sqlDir, 'Projeto_Agendamento.sql'), 'utf8'),
         readFile(path.join(sqlDir, 'migrations/001_fila_diaria.sql'), 'utf8'),
         readFile(path.join(sqlDir, 'migrations/002_ticket_publico.sql'), 'utf8'),
         readFile(path.join(sqlDir, 'migrations/003_registros_atendimento.sql'), 'utf8'),
-        readFile(path.join(sqlDir, 'migrations/004_autenticacao_multi_tenant.sql'), 'utf8')
+        readFile(path.join(sqlDir, 'migrations/004_autenticacao_multi_tenant.sql'), 'utf8'),
+        readFile(path.join(sqlDir, 'migrations/005_servicos_por_entrada.sql'), 'utf8')
     ]);
     await db.query(schema.replace(/^(CREATE DATABASE IF NOT EXISTS|USE) gestao_agendamentos\b/gm,
         (_, comando) => comando + ' ' + banco));
@@ -79,6 +80,16 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         assert.deepEqual(registro, { dia: '2024-01-02', posicao_fila: null, ticket_hash: null });
     });
 
+    await t.test('prepara estrutura de serviços por entrada sem alterar pacotes anteriores', async () => {
+        const sql = migracaoServicos.replace(/^USE gestao_agendamentos;/m, 'USE ' + banco + ';');
+        await db.query(sql);
+        await db.query(sql);
+        const [[pacote]] = await db.query('SELECT servico_id FROM pacotes WHERE id = 1');
+        assert.equal(pacote.servico_id, null);
+        const [tabelas] = await db.query("SHOW TABLES LIKE 'agendamento_servicos'");
+        assert.equal(tabelas.length, 1);
+    });
+
     const segredo = randomBytes(32).toString('hex');
     const { emitirAcesso } = require('../src/services/tokensAuth');
     const tokenA = emitirAcesso(1, 1, 'ADMIN', segredo);
@@ -108,6 +119,18 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         body: JSON.stringify(body)
     });
     const entrar = (body, token = tokenA) => requisicao('/agendamentos/fila', token, 'POST', body);
+
+    await t.test('cadastro de pacote exige serviço da própria empresa', async () => {
+        const pedido = { nome: 'Pacote vinculado', total_sessoes: 2, preco_total: 50, dias_validade: 30 };
+        assert.equal((await requisicao('/pacotes', tokenA, 'POST', pedido)).status, 400);
+        assert.equal((await requisicao('/pacotes', tokenA, 'POST', { ...pedido, servico_id: 2 })).status, 404);
+        const resposta = await requisicao('/pacotes', tokenA, 'POST', { ...pedido, servico_id: 1 });
+        assert.equal(resposta.status, 201);
+        const { pacote_id } = await resposta.json();
+        const [[pacote]] = await db.execute('SELECT servico_id FROM pacotes WHERE id = ?', [pacote_id]);
+        assert.equal(pacote.servico_id, 1);
+        await db.execute('DELETE FROM pacotes WHERE id = ?', [pacote_id]);
+    });
 
     await t.test('serve o painel e seus módulos JavaScript', async () => {
         const painel = await fetch(base);

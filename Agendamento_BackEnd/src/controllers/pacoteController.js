@@ -5,21 +5,24 @@ const pacoteController = {
     // Criar o modelo de pacote da empresa
     cadastrarModeloPacote: async (req, res) => {
         try {
-            const { nome, descricao, total_sessoes, preco_total, dias_validade } = req.body;
+            const { nome, descricao, total_sessoes, preco_total, dias_validade, servico_id } = req.body;
 
-            if (!nome || !total_sessoes || !preco_total) {
+            if (!nome || !total_sessoes || !preco_total || !/^[1-9][0-9]*$/.test(String(servico_id || ''))) {
                 return res.status(400).json({ 
-                    erro: 'Os campos nome, total_sessoes e preco_total são obrigatórios.'
+                    erro: 'Informe o nome, o serviço, o total de sessões e o preço.'
                 });
             }
 
+            const [servicos] = await pool.execute('SELECT id FROM servicos WHERE id = ? AND empresa_id = ?', [servico_id, req.comercioId]);
+            if (!servicos.length) return res.status(404).json({ erro: 'Serviço não encontrado.' });
             const novoId = await PacoteModel.criarModeloPacote(
                 req.comercioId,
                 nome, 
                 descricao, 
                 total_sessoes, 
                 preco_total, 
-                dias_validade
+                dias_validade,
+                Number(servico_id)
             );
 
             return res.status(201).json({

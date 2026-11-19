@@ -9,7 +9,7 @@ Você precisa de **Node.js 18 ou superior**, **MySQL 8 em execução** e uma con
 ### 1. Prepare o banco
 
 - **Instalação nova.** Abra e execute o arquivo inteiro [Projeto_Agendamento.sql](Agendamento_BD/Projeto_Agendamento.sql). Ele cria o banco `gestao_agendamentos` e as tabelas.
-- **Base existente.** Faça um backup e aplique as migrações pendentes em ordem numérica, até [004_autenticacao_multi_tenant.sql](Agendamento_BD/migrations/004_autenticacao_multi_tenant.sql), antes de atualizar o servidor. As migrações podem ser reaplicadas.
+- **Base existente.** Faça um backup e aplique as migrações pendentes em ordem numérica, até [006_financeiro_por_servico.sql](Agendamento_BD/migrations/006_financeiro_por_servico.sql), antes de atualizar o servidor. As migrações podem ser reaplicadas.
 
 Configure o backend com uma conta MySQL dedicada. Depois de criar a conta, ajuste o usuário e o host em [PERMISSÃO.sql](Agendamento_BD/PERMISSÃO.sql) e execute o script com uma conta administrativa. Ele concede `SELECT`, `INSERT` e `UPDATE` em `gestao_agendamentos`. Para uma conta que já tenha privilégios adicionais, revise as concessões existentes. A conta usada para criar ou atualizar o esquema precisa de permissões adicionais de administração do banco.
 
@@ -133,7 +133,7 @@ O painel mostra a fila do dia no fuso de São Paulo e a atualiza a cada 10 segun
 
 ### Preparar dados de demonstração
 
-Com o banco indicado em `DB_NAME` criado e o `.env` configurado, execute `npm run demo` no backend usando uma conta MySQL com permissão de migração. O comando prepara as tabelas de uma base vazia, aplica as quatro migrações e cria **Demo Centro** e **Demo Jardins**, cada uma com cliente, serviço e pacote próprios. A conta `demo-admin@example.invalid` recebe acesso administrativo às duas lojas.
+Com o banco indicado em `DB_NAME` criado e o `.env` configurado, execute `npm run demo` no backend usando uma conta MySQL com permissão de migração. O comando prepara as tabelas de uma base vazia, aplica as migrações e cria **Demo Centro** e **Demo Jardins**, cada uma com cliente, serviço e pacote próprios. A conta `demo-admin@example.invalid` recebe acesso administrativo às duas lojas.
 
 Na primeira execução, o terminal exibe a senha aleatória gerada. Guarde-a para entregar ao testador. Para definir a senha inicial, configure `DEMO_PASSWORD` no ambiente antes de executar. As execuções seguintes preservam as credenciais e os registros já existentes, sem duplicar os cadastros da demonstração.
 
@@ -159,7 +159,7 @@ Abra o endereço HTTPS exibido no terminal, acrescentando `/login`, e compartilh
 
 ## Financeiro do estabelecimento
 
-Depois de concluir um atendimento, abra **Financeiro** no painel. Os cartões mostram o valor dos serviços concluídos hoje, desde segunda-feira e desde o primeiro dia do mês, no fuso de São Paulo. Em **Histórico de serviços**, selecione dia, semana, mês ou ano e clique em **Consultar**. O gráfico de pizza mostra a participação de cada serviço no período, incluindo as sessões de pacote. O gráfico considera todos os registros do período e agrupa serviços pelo nome registrado. A tabela lista até 30 atendimentos mais recentes do período.
+Depois de concluir um atendimento, abra **Financeiro** no painel. Os cartões mostram o valor e a quantidade de serviços concluídos hoje, desde segunda-feira e desde o primeiro dia do mês, no fuso de São Paulo. Em **Histórico de serviços**, selecione dia, semana, mês ou ano e clique em **Consultar**. O gráfico de pizza mostra a participação de cada serviço no período, incluindo as sessões de pacote. O gráfico considera todos os registros do período e agrupa serviços pelo nome registrado. A tabela lista até 30 serviços concluídos mais recentemente, com uma linha por serviço da entrada.
 
 Clique em **Exportar PDF** e escolha **Salvar como PDF** no diálogo do navegador. O relatório inclui o intervalo consultado, o total, o gráfico com a legenda e a tabela exibida no Histórico.
 
@@ -167,14 +167,16 @@ O sistema registra o preço do serviço avulso ou o preço total do pacote divid
 
 ## Como testar um pacote
 
-1. Em **Serviços e pacotes**, crie um pacote de teste com uma conta `ADMIN` ou `GERENTE`.
+1. Em **Serviços e pacotes**, crie um pacote de teste com uma conta `ADMIN` ou `GERENTE` e selecione o serviço que ele cobre.
 2. Na mesma tela, em **Atribuir pacote a cliente**, selecione um cliente cadastrado e um modelo de pacote. Clique em **Atribuir pacote**. O painel confirma o saldo inicial de sessões e o prazo de validade.
-3. Em **Registrar cliente no balcão**, escolha o cliente, o serviço e o pacote. A entrada desconta uma sessão. A rota `GET /pacotes/cliente/:cliente_id` retorna o saldo restante.
-4. Volte a **Serviços e pacotes**, selecione o cliente e confira **Saldo de pacotes do cliente**, com sessões restantes, validade e situação. Se a entrada for cancelada antes de iniciar o atendimento, a sessão é devolvida ao pacote. Após o início, o cancelamento não estorna a sessão; a validade original do pacote é mantida.
+3. Em **Registrar cliente no balcão**, escolha o cliente e adicione os serviços que serão feitos na mesma senha. Para cada serviço, escolha um pacote compatível ou mantenha **Sem pacote**. A entrada desconta uma sessão de cada pacote selecionado. A rota `GET /pacotes/cliente/:cliente_id` retorna os saldos restantes.
+4. Volte a **Serviços e pacotes**, selecione o cliente e confira **Saldo de pacotes do cliente**. O cancelamento antes do início devolve todas as sessões descontadas e conserva a validade original. Após o início, as sessões seguem consumidas.
+
+Pacotes cadastrados antes do vínculo com serviços precisam ser associados ao serviço correspondente para aparecerem no balcão.
 
 ## Entrada pública e acompanhamento
 
-No painel conectado, use **Abrir página de entrada dos clientes** para obter o link do estabelecimento, como `/fila.html?empresa=1`. O cliente informa nome e WhatsApp, escolhe um serviço e segue direto para o ticket. Cadastros existentes na mesma empresa são encontrados pelo telefone, ignorando pontuação e o prefixo brasileiro 55; o nome anterior é preservado. O uso de pacotes é registrado pela equipe no balcão.
+No painel conectado, use **Abrir página de entrada dos clientes** para obter o link do estabelecimento, como `/fila.html?empresa=1`. O cliente informa nome e WhatsApp, escolhe um ou mais serviços e recebe um único ticket. Cadastros existentes na mesma empresa são encontrados pelo telefone, ignorando pontuação e o prefixo brasileiro 55. O nome cadastrado é preservado. O uso de pacotes é registrado pela equipe no balcão.
 
 Ao registrar pelo balcão, use **Abrir link do cliente** na confirmação para compartilhar o ticket individual. Use o endereço HTTPS do sistema quando compartilhar links fora da máquina local. O ticket mostra a posição e o andamento daquela entrada.
 
@@ -210,21 +212,21 @@ O painel em `/` e `/dashboard` usa o login em `/login`. Nas rotas autenticadas, 
 | `POST /clientes` | Cadastra cliente com `nome` e `telefone_whatsapp`. |
 | `GET /clientes` | Lista clientes da empresa. |
 | `POST /servicos` | Cadastra serviço com `nome`, `duracao_minutos` e `preco`. |
-| `POST /pacotes` | Cadastra modelo com `nome`, `total_sessoes`, `preco_total` e `dias_validade` opcional. |
+| `POST /pacotes` | Cadastra modelo com `servico_id`, `nome`, `total_sessoes`, `preco_total` e `dias_validade` opcional. |
 | `GET /pacotes` | Lista os modelos de pacotes. |
 | `POST /pacotes/vender` | Atribui um `pacote_id` ao `cliente_id`. |
 | `GET /pacotes/cliente/:cliente_id` | Consulta saldo e validade dos pacotes do cliente. |
-| `POST /agendamentos/fila` | Recebe `cliente_id`, `servico_id`, `data_atendimento` no formato `AAAA-MM-DD` e `cliente_pacote_id` opcional. Retorna o campo `ticket` para a consulta pública. |
+| `POST /agendamentos/fila` | Recebe `cliente_id`, `data_atendimento` no formato `AAAA-MM-DD` e `servicos`, uma lista de objetos com `servico_id` e `cliente_pacote_id` opcional. Também aceita o formato anterior com um serviço no corpo. Retorna `ticket` para a consulta pública. |
 | `GET /fila-publica/:empresa_id/servicos` | Retorna o nome do estabelecimento e o catálogo de serviços. |
-| `POST /fila-publica/:empresa_id/entradas` | Recebe `nome`, `telefone_whatsapp`, `servico_id` e um `ticket` aleatório de 64 caracteres hexadecimais gerado pela página. Registra a entrada na fila do dia e retorna a posição. Reenvie o mesmo ticket ao repetir uma requisição. |
+| `POST /fila-publica/:empresa_id/entradas` | Recebe `nome`, `telefone_whatsapp`, `servico_ids` (ou um `servico_id`) e um `ticket` aleatório de 64 caracteres hexadecimais gerado pela página. Retorna a posição na fila do dia. Reenvie o mesmo ticket ao repetir uma requisição. |
 | `GET /agendamentos/ticket` | Usa `Authorization: Bearer <ticket>`. Retorna `posicao_fila`, `status` e `pessoas_na_frente`, ou `404` se o ticket estiver ausente ou for inválido. |
-| `GET /agendamentos/fila/:data_atendimento` | Lista a fila do dia. |
-| `GET /agendamentos/proximo/:data_atendimento` | Consulta o próximo cliente da fila. |
+| `GET /agendamentos/fila/:data_atendimento` | Lista a fila do dia com os serviços e a duração total de cada entrada. |
+| `GET /agendamentos/proximo/:data_atendimento` | Consulta o próximo cliente da fila e seus serviços. |
 | `PATCH /agendamentos/status` | Recebe `id` e `status`. Envie `confirmado` para iniciar, `concluido` para concluir ou `cancelado` para cancelar. |
 | `GET /financeiro/resumo` | Retorna os valores e as quantidades de serviços concluídos hoje, na semana atual e no mês atual, além dos últimos 30 registros da empresa. |
 | `GET /financeiro/periodo?tipo=semana&data=2026-11-09` | Retorna o intervalo, o valor total, o valor por serviço e até 30 registros recentes da empresa no período. Os tipos são `dia`, `semana`, `mes` e `ano`. Sem parâmetros, consulta o mês atual. |
 
-A API permite um atendimento em andamento por empresa e dia. O endpoint público `GET /api/webhook/whatsapp` faz a verificação inicial do webhook quando `WEBHOOK_VERIFY_TOKEN` está configurado.
+A fila aceita uma entrada ativa por cliente e empresa, somando balcão e página pública. Uma segunda entrada retorna `409` enquanto a primeira estiver aguardando ou em atendimento. A API permite um atendimento em andamento por empresa e dia. O endpoint público `GET /api/webhook/whatsapp` faz a verificação inicial do webhook quando `WEBHOOK_VERIFY_TOKEN` está configurado.
 
 ## Problemas comuns
 

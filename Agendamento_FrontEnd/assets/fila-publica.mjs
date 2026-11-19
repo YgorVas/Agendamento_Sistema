@@ -18,10 +18,16 @@ async function carregarCatalogo() {
         const estabelecimento = document.getElementById('estabelecimento');
         estabelecimento.textContent = dados.nome_fantasia;
         estabelecimento.hidden = false;
-        const seletor = formulario.elements.servico_id;
-        seletor.replaceChildren(new Option('Selecione um serviço', ''));
+        const opcoes = document.getElementById('opcoes-servicos');
+        opcoes.replaceChildren();
         for (const servico of dados.servicos) {
-            seletor.add(new Option(`${servico.nome} · ${moeda.format(servico.preco)}`, servico.id));
+            const rotulo = document.createElement('label');
+            const opcao = document.createElement('input');
+            opcao.type = 'checkbox';
+            opcao.name = 'servico_ids';
+            opcao.value = servico.id;
+            rotulo.append(opcao, `${servico.nome} · ${moeda.format(servico.preco)}`);
+            opcoes.append(rotulo);
         }
         formulario.hidden = dados.servicos.length === 0;
         mensagem.textContent = formulario.hidden ? 'Nenhum serviço está disponível.' : '';
@@ -35,10 +41,16 @@ formulario.addEventListener('submit', async evento => {
     const botao = formulario.querySelector('button');
     if (botao.disabled) return;
     const campos = new FormData(formulario);
+    const servicoIds = campos.getAll('servico_ids').map(Number);
+    if (!servicoIds.length) {
+        mensagem.textContent = 'Selecione pelo menos um serviço.';
+        document.querySelector('#opcoes-servicos input')?.focus();
+        return;
+    }
     const body = {
         nome: campos.get('nome').trim(),
         telefone_whatsapp: campos.get('telefone_whatsapp').trim(),
-        servico_id: Number(campos.get('servico_id'))
+        servico_ids: servicoIds
     };
     const chave = JSON.stringify(body);
     if (!ticketsPorEntrada.has(chave)) {

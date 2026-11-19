@@ -17,8 +17,11 @@
             <input id="nome" name="nome" autocomplete="name" maxlength="100" required>
             <label for="whatsapp">WhatsApp com DDD</label>
             <input id="whatsapp" name="telefone_whatsapp" type="tel" autocomplete="tel" maxlength="20" required>
-            <label for="servico">Serviço</label>
-            <select id="servico" name="servico_id" required></select>
+            <fieldset id="servicos">
+                <legend>Serviços</legend>
+                <p>Selecione pelo menos um serviço.</p>
+                <div id="opcoes-servicos"></div>
+            </fieldset>
             <button type="submit">Entrar na fila</button>
         </form>
     </main>

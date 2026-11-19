@@ -135,8 +135,19 @@ CREATE INDEX idx_agendamento_empresa_data ON agendamentos (empresa_id, data_hora
 -- Otimiza a verificação de pacotes ativos
 CREATE INDEX idx_pacotes_status_validade ON cliente_pacotes (cliente_id, status, data_validade);
 
+CREATE TABLE agendamento_servicos (
+    agendamento_id INT NOT NULL,
+    servico_id INT NOT NULL,
+    cliente_pacote_id INT NULL,
+    PRIMARY KEY (agendamento_id, servico_id),
+    CONSTRAINT fk_agendamento_servicos_agendamento FOREIGN KEY (agendamento_id) REFERENCES agendamentos(id) ON DELETE CASCADE,
+    CONSTRAINT fk_agendamento_servicos_servico FOREIGN KEY (servico_id) REFERENCES servicos(id),
+    CONSTRAINT fk_agendamento_servicos_pacote FOREIGN KEY (cliente_pacote_id) REFERENCES cliente_pacotes(id)
+) ENGINE=InnoDB;
+
 CREATE TABLE registros_atendimento (
-    agendamento_id INT PRIMARY KEY,
+    agendamento_id INT NOT NULL,
+    item INT NOT NULL DEFAULT 1,
     empresa_id INT NOT NULL,
     cliente_nome VARCHAR(100) NOT NULL,
     servico_nome VARCHAR(100) NOT NULL,
@@ -144,6 +155,7 @@ CREATE TABLE registros_atendimento (
     valor DECIMAL(28, 18) NOT NULL,
     data_conclusao DATE NOT NULL,
     concluido_em_utc DATETIME(3) NOT NULL,
+    PRIMARY KEY (agendamento_id, item),
     FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE,
     INDEX idx_registros_empresa_data (empresa_id, data_conclusao, concluido_em_utc, agendamento_id)
 ) ENGINE=InnoDB;

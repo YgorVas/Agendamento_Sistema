@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const ClienteModel = require('./clienteModel');
 const { registrarAtendimento } = require('./financeiroModel');
+const { variantesTelefone } = require('../services/telefone');
 
 async function transacaoDaEmpresa(empresaId, executar) {
     const conexao = await pool.getConnection();
@@ -21,7 +22,46 @@ async function transacaoDaEmpresa(empresaId, executar) {
     }
 }
 
-async function inserirNaFila(conexao, empresaId, clienteId, servicoId, pacoteId, data, ticketHash) {
+async function temEntradaAtiva(conexao, empresaId, { id, telefone_whatsapp }) {
+    const [entradas] = await conexao.execute(`
+        SELECT a.id FROM agendamentos a
+        JOIN clientes c ON c.id = a.cliente_id AND c.empresa_id = a.empresa_id
+        WHERE a.empresa_id = ? AND a.posicao_fila IS NOT NULL AND a.status IN ('agendado', 'confirmado')
+          AND (c.id = ? OR REGEXP_REPLACE(c.telefone_whatsapp, '[^0-9]', '') IN (NULLIF(?, ''), NULLIF(?, '')))
+        LIMIT 1
+    `, [empresaId, id, ...variantesTelefone(telefone_whatsapp)]);
+    return entradas.length > 0;
+}
+
+async function servicosDaEmpresa(conexao, empresaId, ids) {
+    const [servicos] = await conexao.query(
+        'SELECT id FROM servicos WHERE empresa_id = ? AND id IN (?) FOR SHARE', [empresaId, ids]
+    );
+    return servicos.length === ids.length;
+}
+
+async function debitarPacotes(conexao, empresaId, clienteId, data, servicos) {
+    const pares = servicos.filter(item => item.pacoteId !== null).map(item => [item.pacoteId, item.servicoId]);
+    if (!pares.length) return true;
+
+    const [pacotes] = await conexao.query(`
+        SELECT cp.id FROM cliente_pacotes cp JOIN pacotes p ON p.id = cp.pacote_id
+        WHERE cp.cliente_id = ? AND p.empresa_id = ? AND cp.status = 'ativo' AND cp.sessoes_restantes > 0
+          AND cp.data_validade >= GREATEST(CURDATE(), CAST(? AS DATE))
+          AND (cp.id, p.servico_id) IN (?)
+        FOR UPDATE
+    `, [clienteId, empresaId, data, pares]);
+    if (pacotes.length !== pares.length) return false;
+
+    await conexao.query(`
+        UPDATE cliente_pacotes SET status = IF(sessoes_restantes = 1, 'concluido', 'ativo'),
+            sessoes_restantes = sessoes_restantes - 1
+        WHERE id IN (?)
+    `, [pacotes.map(pacote => pacote.id)]);
+    return true;
+}
+
+async function inserirNaFila(conexao, empresaId, clienteId, servicos, data, ticketHash) {
     const [fila] = await conexao.execute(
         `SELECT COALESCE(MAX(posicao_fila), 0) + 1 AS posicao,
                 COUNT(CASE WHEN status IN ('agendado', 'confirmado') THEN 1 END) AS pessoas
@@ -29,17 +69,56 @@ async function inserirNaFila(conexao, empresaId, clienteId, servicoId, pacoteId,
         [empresaId, data]
     );
     const { posicao, pessoas } = fila[0];
+    // Mantém o primeiro serviço nos campos usados pelas integrações anteriores.
+    const principal = servicos[0];
     const [novo] = await conexao.execute(
         `INSERT INTO agendamentos
             (empresa_id, cliente_id, servico_id, cliente_pacote_id, posicao_fila, data_atendimento, data_hora, status, ticket_hash)
          VALUES (?, ?, ?, ?, ?, ?, NOW(), 'agendado', ?)`,
-        [empresaId, clienteId, servicoId, pacoteId, posicao, data, ticketHash]
+        [empresaId, clienteId, principal.servicoId, principal.pacoteId, posicao, data, ticketHash]
     );
+    await conexao.query(`
+        INSERT INTO agendamento_servicos (agendamento_id, servico_id, cliente_pacote_id) VALUES ?
+    `, [servicos.map(({ servicoId, pacoteId }) => [novo.insertId, servicoId, pacoteId])]);
     return { id: novo.insertId, posicao, pessoas };
 }
 
+async function consultarFila(empresaId, data, apenasProximo = false) {
+    const [linhas] = await pool.execute(`
+        WITH fila AS (
+            SELECT a.id, a.posicao_fila, a.cliente_pacote_id, a.servico_id, a.status,
+                   c.nome AS cliente_nome, c.telefone_whatsapp AS cliente_telefone
+            FROM agendamentos a
+            JOIN clientes c ON c.id = a.cliente_id AND c.empresa_id = a.empresa_id
+            WHERE a.empresa_id = ? AND a.data_atendimento = ? AND a.posicao_fila IS NOT NULL
+              AND ${apenasProximo ? "a.status = 'agendado'" : "a.status != 'cancelado'"}
+            ORDER BY a.posicao_fila, a.id
+            ${apenasProximo ? 'LIMIT 1' : ''}
+        )
+        SELECT fila.id, fila.posicao_fila, fila.cliente_pacote_id, fila.status,
+               fila.cliente_nome, fila.cliente_telefone, s.id AS servico_id, s.nome AS servico_nome,
+               s.duracao_minutos, item.cliente_pacote_id AS pacote_do_servico
+        FROM fila
+        LEFT JOIN agendamento_servicos item ON item.agendamento_id = fila.id
+        LEFT JOIN servicos s ON s.id = item.servico_id AND s.empresa_id = ?
+        ORDER BY fila.posicao_fila, fila.id, (s.id = fila.servico_id) DESC, s.id
+    `, [empresaId, data, empresaId]);
+
+    const entradas = new Map();
+    for (const { servico_id, servico_nome, duracao_minutos, pacote_do_servico, ...dados } of linhas) {
+        if (!entradas.has(dados.id)) {
+            entradas.set(dados.id, { ...dados, servico_nome, duracao_minutos: null, servicos: [] });
+        }
+        if (servico_id === null) continue;
+        const entrada = entradas.get(dados.id);
+        entrada.servicos.push({ servico_id, servico_nome, duracao_minutos, cliente_pacote_id: pacote_do_servico });
+        entrada.duracao_minutos = (entrada.duracao_minutos ?? 0) + duracao_minutos;
+    }
+    return [...entradas.values()];
+}
+
 const AgendamentoModel = {
-    entrarNaFilaPublica: (empresaId, nome, telefone, servicoId, data, ticketHash) =>
+    entrarNaFilaPublica: (empresaId, nome, telefone, servicoIds, data, ticketHash) =>
         transacaoDaEmpresa(empresaId, async (conexao) => {
             const [entradas] = await conexao.execute(
                 'SELECT posicao_fila FROM agendamentos WHERE ticket_hash = ? AND empresa_id = ?',
@@ -47,48 +126,29 @@ const AgendamentoModel = {
             );
             if (entradas.length) return { existente: true, posicao: entradas[0].posicao_fila };
 
-            const [servicos] = await conexao.execute(
-                'SELECT id FROM servicos WHERE id = ? AND empresa_id = ? FOR SHARE',
-                [servicoId, empresaId]
-            );
-            if (!servicos.length) return { erro: 'servico' };
+            if (!await servicosDaEmpresa(conexao, empresaId, servicoIds)) return { erro: 'servico' };
 
             const cliente = await ClienteModel.buscarPorTelefone(empresaId, telefone, conexao);
-            if (cliente) {
-                const [ativas] = await conexao.execute(
-                    "SELECT id FROM agendamentos WHERE empresa_id = ? AND cliente_id = ? AND status IN ('agendado', 'confirmado') AND posicao_fila IS NOT NULL LIMIT 1",
-                    [empresaId, cliente.id]
-                );
-                if (ativas.length) return { erro: 'entrada_ativa' };
-            }
+            if (cliente && await temEntradaAtiva(conexao, empresaId, cliente)) return { erro: 'entrada_ativa' };
             const clienteId = cliente?.id ??
                 await ClienteModel.criar(empresaId, nome, telefone, null, null, conexao);
-            return inserirNaFila(conexao, empresaId, clienteId, servicoId, null, data, ticketHash);
+            const servicos = servicoIds.map(servicoId => ({ servicoId, pacoteId: null }));
+            return inserirNaFila(conexao, empresaId, clienteId, servicos, data, ticketHash);
         }),
 
-    entrarNaFila: (empresaId, clienteId, servicoId, pacoteId, data, ticketHash) =>
+    entrarNaFila: (empresaId, clienteId, servicos, data, ticketHash) =>
         transacaoDaEmpresa(empresaId, async (conexao) => {
-            const [cadastro] = await conexao.execute(
-                `SELECT c.id FROM clientes c JOIN servicos s ON s.empresa_id = c.empresa_id
-                 WHERE c.empresa_id = ? AND c.id = ? AND s.id = ? FOR SHARE`,
-                [empresaId, clienteId, servicoId]
+            const [[cliente]] = await conexao.execute(
+                'SELECT id, telefone_whatsapp FROM clientes WHERE empresa_id = ? AND id = ? FOR SHARE',
+                [empresaId, clienteId]
             );
-            if (!cadastro.length) return { erro: 'cadastro' };
-
-            if (pacoteId) {
-                const [debito] = await conexao.execute(
-                    `UPDATE cliente_pacotes SET
-                         status = IF(sessoes_restantes = 1, 'concluido', 'ativo'),
-                         sessoes_restantes = sessoes_restantes - 1
-                     WHERE id = ? AND cliente_id = ? AND status = 'ativo' AND sessoes_restantes > 0
-                       AND data_validade >= GREATEST(CURDATE(), CAST(? AS DATE))
-                       AND pacote_id IN (SELECT id FROM pacotes WHERE empresa_id = ? AND servico_id = ?)`,
-                    [pacoteId, clienteId, data, empresaId, servicoId]
-                );
-                if (!debito.affectedRows) return { erro: 'pacote' };
+            if (!cliente) return { erro: 'cadastro' };
+            if (await temEntradaAtiva(conexao, empresaId, cliente)) return { erro: 'entrada_ativa' };
+            if (!await servicosDaEmpresa(conexao, empresaId, servicos.map(item => item.servicoId))) {
+                return { erro: 'cadastro' };
             }
-
-            return inserirNaFila(conexao, empresaId, clienteId, servicoId, pacoteId, data, ticketHash);
+            if (!await debitarPacotes(conexao, empresaId, clienteId, data, servicos)) return { erro: 'pacote' };
+            return inserirNaFila(conexao, empresaId, clienteId, servicos, data, ticketHash);
         }),
 
     consultarTicket: async (ticketHash) => {
@@ -106,32 +166,12 @@ const AgendamentoModel = {
         return linhas[0];
     },
 
-    // 4. Listar a fila do dia ordenada pela posição
-    listarFilaDoDia: async (empresa_id, data_atendimento) => {
-        const query = `
-            SELECT 
-                a.id, 
-                a.posicao_fila,
-                a.cliente_pacote_id,
-                a.status, 
-                c.nome AS cliente_nome, 
-                c.telefone_whatsapp AS cliente_telefone,
-                s.nome AS servico_nome,
-                s.duracao_minutos
-            FROM agendamentos a
-            JOIN clientes c ON a.cliente_id = c.id AND c.empresa_id = a.empresa_id
-            LEFT JOIN servicos s ON a.servico_id = s.id AND s.empresa_id = a.empresa_id
-            WHERE a.empresa_id = ? AND a.data_atendimento = ? AND a.posicao_fila IS NOT NULL AND a.status != 'cancelado'
-            ORDER BY a.posicao_fila ASC, a.id ASC
-        `;
-        const [linhas] = await pool.execute(query, [empresa_id, data_atendimento]);
-        return linhas;
-    },
+    listarFilaDoDia: (empresaId, data) => consultarFila(empresaId, data),
 
     atualizarStatus: (empresaId, id, status) =>
         transacaoDaEmpresa(empresaId, async (conexao) => {
             const [registros] = await conexao.execute(
-                `SELECT status, cliente_pacote_id, DATE_FORMAT(data_atendimento, '%Y-%m-%d') AS data
+                `SELECT status, DATE_FORMAT(data_atendimento, '%Y-%m-%d') AS data
                  FROM agendamentos WHERE id = ? AND empresa_id = ?`,
                 [id, empresaId]
             );
@@ -153,40 +193,22 @@ const AgendamentoModel = {
             await conexao.execute(
                 'UPDATE agendamentos SET status = ? WHERE id = ? AND empresa_id = ?', [status, id, empresaId]
             );
-            if (status === 'cancelado' && atual.status === 'agendado' && atual.cliente_pacote_id) {
-                // O débito ocorreu na entrada; devolva-o apenas antes do início do atendimento.
-                await conexao.execute(
-                    `UPDATE cliente_pacotes SET sessoes_restantes = sessoes_restantes + 1,
-                         status = IF(status = 'concluido', 'ativo', status)
-                     WHERE id = ?`, [atual.cliente_pacote_id]
-                );
+            if (status === 'cancelado' && atual.status === 'agendado') {
+                await conexao.execute(`
+                    UPDATE agendamentos a
+                    LEFT JOIN agendamento_servicos item ON item.agendamento_id = a.id
+                    JOIN cliente_pacotes cp ON cp.cliente_id = a.cliente_id
+                        AND cp.id = IF(item.agendamento_id IS NULL, a.cliente_pacote_id, item.cliente_pacote_id)
+                    SET cp.sessoes_restantes = cp.sessoes_restantes + 1,
+                        cp.status = IF(cp.status = 'concluido', 'ativo', cp.status)
+                    WHERE a.id = ? AND a.empresa_id = ?
+                `, [id, empresaId]);
             }
             if (status === 'concluido') await registrarAtendimento(conexao, empresaId, id);
             return { mudou: true, data: atual.data };
         }),
 
-    // Buscar o próximo cliente da fila do dia (menor posição com status 'agendado')
-    obterProximoDaFila: async (empresa_id, data_atendimento) => {
-            const query = `
-                SELECT 
-                    a.id, 
-                    a.posicao_fila, 
-                    c.nome AS cliente_nome, 
-                    c.telefone_whatsapp AS cliente_telefone,
-                    s.nome AS servico_nome
-                FROM agendamentos a
-                JOIN clientes c ON a.cliente_id = c.id AND c.empresa_id = a.empresa_id
-                LEFT JOIN servicos s ON a.servico_id = s.id AND s.empresa_id = a.empresa_id
-                WHERE a.empresa_id = ? 
-                AND a.data_atendimento = ? 
-                AND a.posicao_fila IS NOT NULL AND a.status = 'agendado'
-                ORDER BY a.posicao_fila ASC, a.id ASC
-                LIMIT 1
-            `;
-            const [linhas] = await pool.execute(query, [empresa_id, data_atendimento]);
-            return linhas[0] || null;
-    },
-
+    obterProximoDaFila: async (empresaId, data) => (await consultarFila(empresaId, data, true))[0] ?? null
 };
 
 module.exports = AgendamentoModel;

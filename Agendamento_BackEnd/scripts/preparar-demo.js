@@ -28,7 +28,8 @@ async function prepararDemo() {
                 (_, comando) => comando + ' ' + mysql.escapeId(nomeBanco)));
         }
         for (const arquivo of ['001_fila_diaria.sql', '002_ticket_publico.sql',
-            '003_registros_atendimento.sql', '004_autenticacao_multi_tenant.sql', '005_servicos_por_entrada.sql']) {
+            '003_registros_atendimento.sql', '004_autenticacao_multi_tenant.sql',
+            '005_servicos_por_entrada.sql', '006_financeiro_por_servico.sql']) {
             const sql = await readFile(path.join(sqlDir, 'migrations', arquivo), 'utf8');
             await db.query(sql.replace(/^USE gestao_agendamentos;/m,
                 'USE ' + mysql.escapeId(nomeBanco) + ';'));
@@ -74,11 +75,19 @@ async function prepararDemo() {
                 )
             `, [empresaId, loja.servico, loja.preco, empresaId, loja.servico]);
             await db.execute(`
-                INSERT INTO pacotes (empresa_id, nome, total_sessoes, preco_total, dias_validade)
-                SELECT ?, 'Pacote Demo 4 sessões', 4, ?, 30 WHERE NOT EXISTS (
+                INSERT INTO pacotes (empresa_id, nome, total_sessoes, preco_total, dias_validade, servico_id)
+                SELECT s.empresa_id, 'Pacote Demo 4 sessões', 4, ?, 30, s.id
+                FROM servicos s WHERE s.empresa_id = ? AND s.nome = ? AND NOT EXISTS (
                     SELECT 1 FROM pacotes WHERE empresa_id = ? AND nome = 'Pacote Demo 4 sessões'
                 )
-            `, [empresaId, loja.preco * 4, empresaId]);
+                ORDER BY s.id LIMIT 1
+            `, [loja.preco * 4, empresaId, loja.servico, empresaId]);
+            await db.execute(`
+                UPDATE pacotes SET servico_id = (
+                    SELECT id FROM servicos WHERE empresa_id = ? AND nome = ? ORDER BY id LIMIT 1
+                )
+                WHERE empresa_id = ? AND nome = 'Pacote Demo 4 sessões' AND servico_id IS NULL
+            `, [empresaId, loja.servico, empresaId]);
         }
         await db.commit();
         console.log('Demonstração preparada com duas lojas, clientes, serviços e pacotes.');

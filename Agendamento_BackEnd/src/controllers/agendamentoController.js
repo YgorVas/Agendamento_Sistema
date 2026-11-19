@@ -13,20 +13,38 @@ function dataValida(data) {
     return !Number.isNaN(dia.getTime()) && dia.toISOString().slice(0, 10) === data;
 }
 
+function servicosDaEntrada(body) {
+    const itens = body.servicos === undefined
+        ? [{ servico_id: body.servico_id, cliente_pacote_id: body.cliente_pacote_id }]
+        : body.servicos;
+    if (!Array.isArray(itens) || !itens.length || itens.some(item =>
+        !idValido(item?.servico_id) || (item.cliente_pacote_id != null && !idValido(item.cliente_pacote_id)))) {
+        return null;
+    }
+    const servicos = itens.map(item => ({
+        servicoId: Number(item.servico_id),
+        pacoteId: item.cliente_pacote_id == null ? null : Number(item.cliente_pacote_id)
+    }));
+    return new Set(servicos.map(item => item.servicoId)).size === servicos.length ? servicos : null;
+}
+
 const agendamentoController = {
     entrarNaFila: async (req, res) => {
         try {
-            const { cliente_id, servico_id, cliente_pacote_id, data_atendimento } = req.body || {};
-            if (!idValido(cliente_id) || !idValido(servico_id) || !dataValida(data_atendimento) ||
-                (cliente_pacote_id != null && !idValido(cliente_pacote_id))) {
-                return res.status(400).json({ erro: 'Informe IDs válidos e uma data no formato YYYY-MM-DD.' });
+            const body = req.body || {};
+            const { cliente_id, data_atendimento } = body;
+            const servicos = servicosDaEntrada(body);
+            if (!idValido(cliente_id) || !servicos || !dataValida(data_atendimento)) {
+                return res.status(400).json({ erro: 'Informe IDs válidos, serviços sem repetição e uma data no formato YYYY-MM-DD.' });
             }
 
             const ticket = randomBytes(32).toString('hex');
             const fila = await AgendamentoModel.entrarNaFila(
-                req.comercioId, Number(cliente_id), Number(servico_id),
-                cliente_pacote_id == null ? null : Number(cliente_pacote_id), data_atendimento, hashTicket(ticket)
+                req.comercioId, Number(cliente_id), servicos, data_atendimento, hashTicket(ticket)
             );
+            if (fila.erro === 'entrada_ativa') {
+                return res.status(409).json({ erro: 'Este cliente já tem uma entrada ativa na fila.' });
+            }
             if (fila.erro === 'pacote') {
                 return res.status(400).json({ erro: 'Pacote incompatível com o serviço, expirado ou sem sessões disponíveis.' });
             }

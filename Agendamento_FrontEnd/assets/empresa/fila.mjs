@@ -2,6 +2,10 @@ import { api, state } from './sessao.mjs';
 import { escapeHtml } from '../html.mjs';
 import { showToast } from './toast.mjs';
 
+function nomesDosServicos(entrada) {
+    return entrada.servicos.map(item => item.servico_nome).join(' · ') || '—';
+}
+
 export function renderEmpresaView() {
     const emAtendimento = state.agendamentos.find(a => a.status === 'confirmado');
     const proximo = state.agendamentos.find(a => a.status === 'agendado');
@@ -21,7 +25,7 @@ export function renderEmpresaView() {
                 <div class="text-xs text-slate-500 flex items-center space-x-2">
                     <span><i class="fa-brands fa-whatsapp text-emerald-500 mr-1"></i>${escapeHtml(emAtendimento.cliente_telefone)}</span>
                     <span>•</span>
-                    <span class="font-medium text-slate-700">${escapeHtml(emAtendimento.servico_nome)}</span>
+                    <span class="font-medium text-slate-700">${escapeHtml(nomesDosServicos(emAtendimento))}</span>
                 </div>
             </div>
         `;
@@ -51,7 +55,7 @@ export function renderEmpresaView() {
                 <div class="text-xs text-slate-500 flex items-center space-x-2">
                     <span><i class="fa-brands fa-whatsapp text-emerald-500 mr-1"></i>${escapeHtml(proximo.cliente_telefone)}</span>
                     <span>•</span>
-                    <span class="font-medium text-slate-700">${escapeHtml(proximo.servico_nome)}</span>
+                    <span class="font-medium text-slate-700">${escapeHtml(nomesDosServicos(proximo))}</span>
                 </div>
             </div>
         `;
@@ -95,8 +99,14 @@ export function renderEmpresaView() {
                 <div class="text-xs text-slate-400"><i class="fa-brands fa-whatsapp text-emerald-500 mr-1"></i>${escapeHtml(item.cliente_telefone)}</div>
             </td>
             <td class="py-3.5 px-4">
-                <div class="text-xs font-medium text-slate-700">${escapeHtml(item.servico_nome)}</div>
-                ${item.cliente_pacote_id ? '<span class="text-[10px] bg-purple-100 text-purple-700 font-bold px-1.5 py-0.5 rounded">Uso de Pacote</span>' : ''}
+                <ul class="space-y-1">
+                    ${item.servicos.map(servico => `
+                        <li class="text-xs font-medium text-slate-700">
+                            ${escapeHtml(servico.servico_nome)}
+                            ${servico.cliente_pacote_id ? '<span class="text-[10px] bg-purple-100 text-purple-700 font-bold px-1.5 py-0.5 rounded">Pacote</span>' : ''}
+                        </li>
+                    `).join('') || '<li>—</li>'}
+                </ul>
             </td>
             <td class="py-3.5 px-4 text-center">${statusBadge}</td>
             <td class="py-3.5 px-4 text-right">

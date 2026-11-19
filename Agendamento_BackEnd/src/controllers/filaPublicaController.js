@@ -26,19 +26,21 @@ async function entrar(req, res) {
     const empresaId = req.params.empresa_id;
     if (!idValido(empresaId)) return res.status(404).json({ erro: 'Estabelecimento não encontrado.' });
 
-    const { nome, telefone_whatsapp, servico_id, ticket } = req.body || {};
+    const { nome, telefone_whatsapp, servico_id, servico_ids = [servico_id], ticket } = req.body || {};
     const nomeCliente = typeof nome === 'string' ? nome.trim() : '';
     const telefone = typeof telefone_whatsapp === 'string' ? telefone_whatsapp.trim() : '';
     if (!nomeCliente || nomeCliente.length > 100 || telefone.length > 20 ||
         !/^\+?[\d ().-]+$/.test(telefone) || !/^\d{10,15}$/.test(telefone.replace(/\D/g, '')) ||
-        typeof servico_id !== 'number' || !idValido(servico_id) ||
+        !Array.isArray(servico_ids) || !servico_ids.length ||
+        servico_ids.some(id => typeof id !== 'number' || !idValido(id)) ||
+        new Set(servico_ids).size !== servico_ids.length ||
         typeof ticket !== 'string' || !/^[0-9a-f]{64}$/.test(ticket)) {
-        return res.status(400).json({ erro: 'Confira seu nome, WhatsApp e serviço escolhido.' });
+        return res.status(400).json({ erro: 'Confira seu nome, WhatsApp e escolha serviços sem repetição.' });
     }
 
     try {
         const fila = await AgendamentoModel.entrarNaFilaPublica(
-            Number(empresaId), nomeCliente, telefone, servico_id, dataLocal.format(new Date()),
+            Number(empresaId), nomeCliente, telefone, servico_ids, dataLocal.format(new Date()),
             createHash('sha256').update(ticket).digest()
         );
         if (fila.erro === 'entrada_ativa') return res.status(409).json({ erro: 'Já existe uma entrada ativa para este telefone. Consulte seu ticket ou procure o estabelecimento.' });

@@ -2,6 +2,11 @@ import { api, state } from './sessao.mjs';
 import { tokenAtual } from '../auth-api.mjs';
 import { showToast } from './toast.mjs';
 
+const listaServicos = document.getElementById('servicos-balcao');
+const adicionarServico = document.getElementById('adicionar-servico-balcao');
+let pacotesCliente = [];
+let consultaPacotes = 0;
+
 export function preencherClientes(clienteId = '') {
     const select = document.getElementById('select-cliente');
     select.replaceChildren(new Option('Cadastrar novo cliente', ''));
@@ -12,30 +17,65 @@ export function preencherClientes(clienteId = '') {
 }
 
 export function populateServicoOptionsSelect() {
-    const select = document.getElementById('select-opcao-servico');
-    select.replaceChildren(new Option('Selecione o serviço', ''));
-    for (const servico of state.servicos) {
-        select.add(new Option(`${servico.nome} - R$ ${Number(servico.preco).toFixed(2)}`, servico.id));
+    for (const select of listaServicos.querySelectorAll('[name="servico_id"]')) {
+        const selecionado = select.value;
+        select.replaceChildren(new Option('Selecione o serviço', ''));
+        for (const servico of state.servicos) {
+            select.add(new Option(`${servico.nome} - R$ ${Number(servico.preco).toFixed(2)}`, servico.id));
+        }
+        if (state.servicos.some(servico => String(servico.id) === selecionado)) select.value = selecionado;
+    }
+    atualizarItens();
+}
+
+function atualizarItens() {
+    const linhas = [...listaServicos.children];
+    const selecoes = new Set(linhas.map(item => item.querySelector('[name="servico_id"]').value));
+    adicionarServico.disabled = linhas.length >= state.servicos.length;
+    for (const linha of linhas) {
+        const servico = linha.querySelector('[name="servico_id"]');
+        for (const opcao of servico.options) {
+            opcao.disabled = Boolean(opcao.value) && opcao.value !== servico.value && selecoes.has(opcao.value);
+        }
+        const pacote = linha.querySelector('[name="cliente_pacote_id"]');
+        const selecionado = pacote.value;
+        pacote.replaceChildren(new Option('Sem pacote', ''));
+        for (const item of pacotesCliente) {
+            if (item.status === 'ativo' && item.sessoes_restantes > 0 && String(item.servico_id) === servico.value) {
+                pacote.add(new Option(`${item.pacote_nome} (${item.sessoes_restantes} restantes)`, item.id));
+            }
+        }
+        if ([...pacote.options].some(opcao => opcao.value === selecionado)) pacote.value = selecionado;
+        pacote.disabled = pacote.options.length === 1;
+        linha.querySelector('[data-remover-servico]').hidden = linhas.length === 1;
     }
 }
 
-export async function carregarPacotesCliente() {
+function incluirServico() {
+    const template = document.getElementById('item-servico-balcao');
+    const linha = template.content.firstElementChild.cloneNode(true);
+    listaServicos.append(linha);
+    populateServicoOptionsSelect();
+    return linha.querySelector('[name="servico_id"]');
+}
+
+export async function carregarPacotesCliente({ limpar = false } = {}) {
+    const consulta = ++consultaPacotes;
     const cliente = document.getElementById('select-cliente').value;
     const token = tokenAtual();
     const cadastro = document.getElementById('cadastro-cliente');
-    const select = document.getElementById('select-pacote');
     cadastro.hidden = Boolean(cliente);
     for (const input of cadastro.querySelectorAll('input')) input.disabled = Boolean(cliente);
-    select.replaceChildren(new Option('Sem pacote', ''));
-    select.disabled = true;
+    if (limpar || !cliente) {
+        pacotesCliente = [];
+        atualizarItens();
+    }
     if (!cliente) return;
 
     const pacotes = await api(`/pacotes/cliente/${cliente}`);
-    if (tokenAtual() !== token || document.getElementById('select-cliente').value !== cliente) return;
-    for (const pacote of pacotes.filter(p => p.status === 'ativo' && p.sessoes_restantes > 0 && String(p.servico_id) === document.getElementById('select-opcao-servico').value)) {
-        select.add(new Option(`${pacote.pacote_nome} (${pacote.sessoes_restantes} restantes)`, pacote.id));
-    }
-    select.disabled = select.options.length === 1;
+    if (consulta !== consultaPacotes || tokenAtual() !== token) return;
+    pacotesCliente = pacotes;
+    atualizarItens();
 }
 
 export function renderClienteView() {
@@ -62,16 +102,20 @@ export function renderClienteView() {
 
     document.getElementById('ticket-posicao').textContent = `#${meuAgendamento.posicao_fila}`;
     document.getElementById('ticket-nome').textContent = meuAgendamento.cliente_nome;
-    document.getElementById('ticket-servico-nome').textContent = meuAgendamento.servico_nome;
+    document.getElementById('ticket-servico-nome').textContent =
+        meuAgendamento.servicos.map(item => item.servico_nome).join(' · ') || '—';
     document.getElementById('ticket-whatsapp').textContent = meuAgendamento.cliente_telefone;
 
     // Pessoas na frente
-    const pessoasNaFrente = state.agendamentos.filter(a => 
+    const entradasNaFrente = state.agendamentos.filter(a =>
         ['agendado', 'confirmado'].includes(a.status) && a.posicao_fila < meuAgendamento.posicao_fila
-    ).length;
+    );
+    const pessoasNaFrente = entradasNaFrente.length;
+    const tempoEstimado = [meuAgendamento, ...entradasNaFrente]
+        .reduce((minutos, entrada) => minutos + (entrada.duracao_minutos ?? 20), 0);
 
     document.getElementById('count-pessoas-frente').textContent = pessoasNaFrente;
-    document.getElementById('count-tempo-estimado').textContent = `~${(pessoasNaFrente + 1) * 20} min`;
+    document.getElementById('count-tempo-estimado').textContent = `~${tempoEstimado} min`;
 
     // Box Dynamic Messaging
     const msgBox = document.getElementById('status-mensagem-box');
@@ -110,18 +154,29 @@ function sairFilaCliente() {
 }
 
 export function configurarBalcao({ executarAcao, atualizarFila, diaAtual }) {
+    incluirServico();
     document.getElementById('select-cliente').addEventListener('change', () => {
-        carregarPacotesCliente().catch(erro => showToast('Erro ao buscar pacotes', erro.message, 'error'));
+        carregarPacotesCliente({ limpar: true }).catch(erro => showToast('Erro ao buscar pacotes', erro.message, 'error'));
     });
-    document.getElementById('select-opcao-servico').addEventListener('change', () => {
-        carregarPacotesCliente().catch(erro => showToast('Erro ao buscar pacotes', erro.message, 'error'));
+    adicionarServico.addEventListener('click', () => incluirServico().focus());
+    listaServicos.addEventListener('change', evento => {
+        if (evento.target.name === 'servico_id') atualizarItens();
+    });
+    listaServicos.addEventListener('click', evento => {
+        const remover = evento.target.closest('[data-remover-servico]');
+        if (!remover) return;
+        remover.parentElement.remove();
+        atualizarItens();
+        adicionarServico.focus();
     });
     function handleEntrarFila(evento) {
         evento.preventDefault();
         executarAcao(async () => {
             const formulario = document.getElementById('form-entrar-fila');
-            const servicoId = Number(document.getElementById('select-opcao-servico').value);
-            const pacoteId = Number(document.getElementById('select-pacote').value) || null;
+            const servicos = [...listaServicos.children].map(linha => ({
+                servico_id: Number(linha.querySelector('[name="servico_id"]').value),
+                cliente_pacote_id: Number(linha.querySelector('[name="cliente_pacote_id"]').value) || null
+            }));
             let clienteId = Number(document.getElementById('select-cliente').value);
             if (!clienteId) {
                 const nome = document.getElementById('input-nome').value.trim();
@@ -132,18 +187,20 @@ export function configurarBalcao({ executarAcao, atualizarFila, diaAtual }) {
                 clienteId = novo.cliente_id;
                 if (!state.clientes.some(cliente => cliente.id === clienteId)) state.clientes.push(novo.cliente);
                 if (novo.existente) showToast('Cliente encontrado', 'O cadastro existente foi utilizado.', 'success');
-                preencherClientes(clienteId);
+                preencherClientes();
             }
             const data = diaAtual();
             const entrada = await api('/agendamentos/fila', {
                 method: 'POST',
-                body: { cliente_id: clienteId, servico_id: servicoId, cliente_pacote_id: pacoteId, data_atendimento: data }
+                body: { cliente_id: clienteId, servicos, data_atendimento: data }
             });
             state.data = data;
             state.activeClienteId = entrada.agendamento_id;
             document.getElementById('link-ticket').href = '/ticket.html#' + entrada.ticket;
             formulario.reset();
             preencherClientes();
+            listaServicos.replaceChildren();
+            incluirServico();
             await carregarPacotesCliente();
             showToast('Fila confirmada', entrada.aviso_cliente, 'success');
             await atualizarFila();

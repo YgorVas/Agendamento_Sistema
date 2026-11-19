@@ -49,19 +49,20 @@ async function registrarAtendimento(conexao, empresaId, agendamentoId) {
     const agora = new Date();
     await conexao.execute(`
         INSERT INTO registros_atendimento
-            (agendamento_id, empresa_id, cliente_nome, servico_nome, pacote_nome,
+            (agendamento_id, item, empresa_id, cliente_nome, servico_nome, pacote_nome,
              valor, data_conclusao, concluido_em_utc)
-        SELECT a.id, a.empresa_id, c.nome, s.nome, p.nome,
-               CASE WHEN a.cliente_pacote_id IS NULL THEN s.preco
+        SELECT a.id, ROW_NUMBER() OVER (ORDER BY s.id), a.empresa_id, c.nome, s.nome, p.nome,
+               CASE WHEN item.cliente_pacote_id IS NULL THEN s.preco
                     ELSE CAST(p.preco_total AS DECIMAL(28, 18)) / p.total_sessoes END,
                ?, ?
         FROM agendamentos a
         JOIN clientes c ON c.id = a.cliente_id AND c.empresa_id = a.empresa_id
-        JOIN servicos s ON s.id = a.servico_id AND s.empresa_id = a.empresa_id
-        LEFT JOIN cliente_pacotes cp ON cp.id = a.cliente_pacote_id AND cp.cliente_id = c.id
+        JOIN agendamento_servicos item ON item.agendamento_id = a.id
+        JOIN servicos s ON s.id = item.servico_id AND s.empresa_id = a.empresa_id
+        LEFT JOIN cliente_pacotes cp ON cp.id = item.cliente_pacote_id AND cp.cliente_id = c.id
         LEFT JOIN pacotes p ON p.id = cp.pacote_id AND p.empresa_id = a.empresa_id
         WHERE a.id = ? AND a.empresa_id = ?
-          AND (a.cliente_pacote_id IS NULL OR p.total_sessoes > 0)
+          AND (item.cliente_pacote_id IS NULL OR p.total_sessoes > 0)
     `, [dataLocal.format(agora), agora.toISOString().slice(0, 23).replace('T', ' '), agendamentoId, empresaId]);
 }
 
@@ -84,11 +85,11 @@ async function consultarResumo(empresaId) {
             FROM registros_atendimento
             WHERE empresa_id = ? AND data_conclusao BETWEEN ? AND ?
         ), recentes AS (
-            SELECT agendamento_id, data_conclusao, concluido_em_utc,
+            SELECT agendamento_id, item, data_conclusao, concluido_em_utc,
                    cliente_nome, servico_nome, pacote_nome, valor
             FROM registros_atendimento
             WHERE empresa_id = ? AND data_conclusao <= ?
-            ORDER BY data_conclusao DESC, concluido_em_utc DESC, agendamento_id DESC
+            ORDER BY data_conclusao DESC, concluido_em_utc DESC, agendamento_id DESC, item
             LIMIT 30
         )
         SELECT COALESCE(ROUND(CAST(totais.hoje AS DECIMAL(36, 12)), 2), 0) AS hoje,
@@ -99,7 +100,7 @@ async function consultarResumo(empresaId) {
                recentes.cliente_nome, recentes.servico_nome, recentes.pacote_nome,
                ROUND(recentes.valor, 2) AS valor
         FROM totais LEFT JOIN recentes ON TRUE
-        ORDER BY recentes.data_conclusao DESC, recentes.concluido_em_utc DESC, recentes.agendamento_id DESC
+        ORDER BY recentes.data_conclusao DESC, recentes.concluido_em_utc DESC, recentes.agendamento_id DESC, recentes.item
     `, [hoje, inicioSemana, inicioMes, hoje, inicioSemana, inicioMes,
         empresaId, inicioResumo, hoje, empresaId, hoje]);
 
@@ -125,21 +126,21 @@ async function consultarPeriodo(empresaId, periodo) {
             WHERE empresa_id = ? AND data_conclusao BETWEEN ? AND ?
             GROUP BY servico_nome
         ), recentes AS (
-            SELECT agendamento_id, data_conclusao, concluido_em_utc,
+            SELECT agendamento_id, item, data_conclusao, concluido_em_utc,
                    cliente_nome, servico_nome, pacote_nome, valor
             FROM registros_atendimento
             WHERE empresa_id = ? AND data_conclusao BETWEEN ? AND ?
-            ORDER BY data_conclusao DESC, concluido_em_utc DESC, agendamento_id DESC
+            ORDER BY data_conclusao DESC, concluido_em_utc DESC, agendamento_id DESC, item
             LIMIT 30
         )
         SELECT servico_nome, valor, total, NULL AS data_conclusao,
-               NULL AS cliente_nome, NULL AS pacote_nome, NULL AS concluido_em_utc, NULL AS agendamento_id
+               NULL AS cliente_nome, NULL AS pacote_nome, NULL AS concluido_em_utc, NULL AS agendamento_id, NULL AS item
         FROM servicos
         UNION ALL
         SELECT servico_nome, ROUND(valor, 2), NULL, DATE_FORMAT(data_conclusao, '%Y-%m-%d'),
-               cliente_nome, pacote_nome, concluido_em_utc, agendamento_id
+               cliente_nome, pacote_nome, concluido_em_utc, agendamento_id, item
         FROM recentes
-        ORDER BY data_conclusao DESC, concluido_em_utc DESC, agendamento_id DESC, valor DESC, servico_nome
+        ORDER BY data_conclusao DESC, concluido_em_utc DESC, agendamento_id DESC, item, valor DESC, servico_nome
     `, [empresaId, inicio, fim, empresaId, inicio, fim]);
 
     const servicos = [];

@@ -32,7 +32,7 @@ export async function carregarPacotesCliente() {
 
     const pacotes = await api(`/pacotes/cliente/${cliente}`);
     if (tokenAtual() !== token || document.getElementById('select-cliente').value !== cliente) return;
-    for (const pacote of pacotes.filter(p => p.status === 'ativo' && p.sessoes_restantes > 0)) {
+    for (const pacote of pacotes.filter(p => p.status === 'ativo' && p.sessoes_restantes > 0 && String(p.servico_id) === document.getElementById('select-opcao-servico').value)) {
         select.add(new Option(`${pacote.pacote_nome} (${pacote.sessoes_restantes} restantes)`, pacote.id));
     }
     select.disabled = select.options.length === 1;
@@ -111,6 +111,9 @@ function sairFilaCliente() {
 
 export function configurarBalcao({ executarAcao, atualizarFila, diaAtual }) {
     document.getElementById('select-cliente').addEventListener('change', () => {
+        carregarPacotesCliente().catch(erro => showToast('Erro ao buscar pacotes', erro.message, 'error'));
+    });
+    document.getElementById('select-opcao-servico').addEventListener('change', () => {
         carregarPacotesCliente().catch(erro => showToast('Erro ao buscar pacotes', erro.message, 'error'));
     });
     function handleEntrarFila(evento) {

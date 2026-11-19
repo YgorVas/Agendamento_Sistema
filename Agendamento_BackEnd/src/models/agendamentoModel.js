@@ -75,8 +75,8 @@ const AgendamentoModel = {
                          sessoes_restantes = sessoes_restantes - 1
                      WHERE id = ? AND cliente_id = ? AND status = 'ativo' AND sessoes_restantes > 0
                        AND data_validade >= GREATEST(CURDATE(), CAST(? AS DATE))
-                       AND pacote_id IN (SELECT id FROM pacotes WHERE empresa_id = ?)`,
-                    [pacoteId, clienteId, data, empresaId]
+                       AND pacote_id IN (SELECT id FROM pacotes WHERE empresa_id = ? AND servico_id = ?)`,
+                    [pacoteId, clienteId, data, empresaId, servicoId]
                 );
                 if (!debito.affectedRows) return { erro: 'pacote' };
             }

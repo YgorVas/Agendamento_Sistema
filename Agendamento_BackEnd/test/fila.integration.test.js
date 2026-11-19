@@ -88,6 +88,7 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         assert.equal(pacote.servico_id, null);
         const [tabelas] = await db.query("SHOW TABLES LIKE 'agendamento_servicos'");
         assert.equal(tabelas.length, 1);
+        await db.query('UPDATE pacotes SET servico_id = 1 WHERE id = 1');
     });
 
     const segredo = randomBytes(32).toString('hex');
@@ -155,6 +156,15 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         assert.deepEqual(dados.map(r => r.posicao_fila).sort(), [1, 2]);
     });
 
+    await t.test('pacote não pode ser usado em outro serviço', async () => {
+        await db.query("INSERT INTO servicos (id, empresa_id, nome, preco) VALUES (3, 1, 'Outro serviço', 20)");
+        const resposta = await entrar({ ...entrada, servico_id: 3, cliente_pacote_id: 1 });
+        assert.equal(resposta.status, 400);
+        const [[pacote]] = await db.query('SELECT sessoes_restantes FROM cliente_pacotes WHERE id = 1');
+        assert.equal(pacote.sessoes_restantes, 1);
+        await db.query('DELETE FROM servicos WHERE id = 3');
+    });
+
     await t.test('apenas uma entrada consome a última sessão', async () => {
         const pedido = { ...entrada, cliente_pacote_id: 1 };
         const respostas = await Promise.all([entrar(pedido), entrar(pedido)]);
@@ -168,6 +178,7 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
     await t.test('cancela pacote antes do início com estorno único', async () => {
         await db.query(`INSERT INTO pacotes (id, empresa_id, nome, total_sessoes, preco_total)
             VALUES (3, 1, 'Pacote para estorno', 1, 20);
+            UPDATE pacotes SET servico_id = 1 WHERE id = 3;
             INSERT INTO cliente_pacotes (id, cliente_id, pacote_id, sessoes_restantes, data_validade)
             VALUES (3, 1, 3, 1, CURRENT_DATE + INTERVAL 30 DAY)`);
         const pedido = { ...entrada, cliente_pacote_id: 3 };
@@ -282,6 +293,7 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         await db.query(`
             INSERT INTO pacotes (id, empresa_id, nome, total_sessoes, preco_total)
             VALUES (2, 1, 'Três sessões', 3, 100);
+            UPDATE pacotes SET servico_id = 1 WHERE id = 2;
             INSERT INTO cliente_pacotes (id, cliente_id, pacote_id, sessoes_restantes, data_validade)
             VALUES (2, 1, 2, 3, CURRENT_DATE + INTERVAL 30 DAY);
         `);

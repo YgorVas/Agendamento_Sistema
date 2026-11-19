@@ -28,7 +28,7 @@ const agendamentoController = {
                 cliente_pacote_id == null ? null : Number(cliente_pacote_id), data_atendimento, hashTicket(ticket)
             );
             if (fila.erro === 'pacote') {
-                return res.status(400).json({ erro: 'Pacote inválido, expirado ou sem sessões restantes.' });
+                return res.status(400).json({ erro: 'Pacote incompatível com o serviço, expirado ou sem sessões disponíveis.' });
             }
             if (fila.erro) {
                 return res.status(404).json({ erro: 'Empresa, cliente ou serviço não encontrado.' });

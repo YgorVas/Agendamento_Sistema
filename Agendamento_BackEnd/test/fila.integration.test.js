@@ -543,4 +543,41 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
             await db.query('UPDATE empresas SET ativo = TRUE WHERE id = 2');
         }
     });
+
+    await t.test('permite voltar à fila em outro dia ou depois de encerrar a entrada atual', async () => {
+        const hoje = new Intl.DateTimeFormat('sv-SE', {
+            timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date());
+        const ontem = new Date(Date.parse(hoje) - 86400000).toISOString().slice(0, 10);
+        const nome = 'Cliente recorrente';
+        const telefone = '11987651234';
+        const [cliente] = await db.execute('INSERT INTO clientes (empresa_id, nome, telefone_whatsapp) VALUES (1, ?, ?)',
+            [nome, telefone]);
+        const balcao = { ...entrada, cliente_id: cliente.insertId, data_atendimento: hoje };
+        const publica = () => entrarPublica({
+            nome, telefone_whatsapp: '+55' + telefone, servico_id: 1, ticket: randomBytes(32).toString('hex')
+        });
+
+        const anterior = await entrar({ ...balcao, data_atendimento: ontem });
+        assert.equal(anterior.status, 201);
+        const { agendamento_id: idAnterior } = await anterior.json();
+        assert.equal((await mudar(idAnterior, 'confirmado')).status, 200);
+
+        const primeira = await publica();
+        assert.equal(primeira.status, 201);
+        assert.equal((await entrar(balcao)).status, 409);
+
+        const [[atual]] = await db.execute('SELECT id FROM agendamentos WHERE cliente_id = ? AND data_atendimento = ?',
+            [cliente.insertId, hoje]);
+        assert.equal((await mudar(atual.id, 'concluido')).status, 200);
+        const segunda = await entrar(balcao);
+        assert.equal(segunda.status, 201);
+        assert.equal((await publica()).status, 409);
+
+        const { agendamento_id: idSegunda } = await segunda.json();
+        assert.equal((await mudar(idSegunda, 'cancelado')).status, 200);
+        assert.equal((await publica()).status, 201);
+        const [[legado]] = await db.execute('SELECT status FROM agendamentos WHERE id = ?', [idAnterior]);
+        assert.equal(legado.status, 'confirmado');
+    });
 });

@@ -22,14 +22,15 @@ async function transacaoDaEmpresa(empresaId, executar) {
     }
 }
 
-async function temEntradaAtiva(conexao, empresaId, { id, telefone_whatsapp }) {
+async function temEntradaAtiva(conexao, empresaId, data, { id, telefone_whatsapp }) {
     const [entradas] = await conexao.execute(`
         SELECT a.id FROM agendamentos a
         JOIN clientes c ON c.id = a.cliente_id AND c.empresa_id = a.empresa_id
-        WHERE a.empresa_id = ? AND a.posicao_fila IS NOT NULL AND a.status IN ('agendado', 'confirmado')
+        WHERE a.empresa_id = ? AND a.data_atendimento = ? AND a.posicao_fila IS NOT NULL
+          AND a.status IN ('agendado', 'confirmado')
           AND (c.id = ? OR REGEXP_REPLACE(c.telefone_whatsapp, '[^0-9]', '') IN (NULLIF(?, ''), NULLIF(?, '')))
         LIMIT 1
-    `, [empresaId, id, ...variantesTelefone(telefone_whatsapp)]);
+    `, [empresaId, data, id, ...variantesTelefone(telefone_whatsapp)]);
     return entradas.length > 0;
 }
 
@@ -129,7 +130,7 @@ const AgendamentoModel = {
             if (!await servicosDaEmpresa(conexao, empresaId, servicoIds)) return { erro: 'servico' };
 
             const cliente = await ClienteModel.buscarPorTelefone(empresaId, telefone, conexao);
-            if (cliente && await temEntradaAtiva(conexao, empresaId, cliente)) return { erro: 'entrada_ativa' };
+            if (cliente && await temEntradaAtiva(conexao, empresaId, data, cliente)) return { erro: 'entrada_ativa' };
             const clienteId = cliente?.id ??
                 await ClienteModel.criar(empresaId, nome, telefone, null, null, conexao);
             const servicos = servicoIds.map(servicoId => ({ servicoId, pacoteId: null }));
@@ -143,7 +144,7 @@ const AgendamentoModel = {
                 [empresaId, clienteId]
             );
             if (!cliente) return { erro: 'cadastro' };
-            if (await temEntradaAtiva(conexao, empresaId, cliente)) return { erro: 'entrada_ativa' };
+            if (await temEntradaAtiva(conexao, empresaId, data, cliente)) return { erro: 'entrada_ativa' };
             if (!await servicosDaEmpresa(conexao, empresaId, servicos.map(item => item.servicoId))) {
                 return { erro: 'cadastro' };
             }

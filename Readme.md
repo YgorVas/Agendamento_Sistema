@@ -226,7 +226,7 @@ O painel em `/` e `/dashboard` usa o login em `/login`. Nas rotas autenticadas, 
 | `GET /financeiro/resumo` | Retorna os valores e as quantidades de serviços concluídos hoje, na semana atual e no mês atual, além dos últimos 30 registros da empresa. |
 | `GET /financeiro/periodo?tipo=semana&data=2026-11-09` | Retorna o intervalo, o valor total, o valor por serviço e até 30 registros recentes da empresa no período. Os tipos são `dia`, `semana`, `mes` e `ano`. Sem parâmetros, consulta o mês atual. |
 
-A fila aceita uma entrada ativa por cliente e empresa, somando balcão e página pública. Uma segunda entrada retorna `409` enquanto a primeira estiver aguardando ou em atendimento. A API permite um atendimento em andamento por empresa e dia. O endpoint público `GET /api/webhook/whatsapp` faz a verificação inicial do webhook quando `WEBHOOK_VERIFY_TOKEN` está configurado.
+A fila aceita uma entrada ativa por cliente, empresa e dia, somando balcão e página pública. Uma segunda tentativa no mesmo dia retorna `409` enquanto a entrada estiver aguardando ou em atendimento. Depois de concluir ou cancelar, o cliente pode entrar novamente no mesmo dia. A API permite um atendimento em andamento por empresa e dia. O endpoint público `GET /api/webhook/whatsapp` faz a verificação inicial do webhook quando `WEBHOOK_VERIFY_TOKEN` está configurado.
 
 ## Problemas comuns
 

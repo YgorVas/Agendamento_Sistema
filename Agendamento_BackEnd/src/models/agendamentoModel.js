@@ -54,6 +54,13 @@ const AgendamentoModel = {
             if (!servicos.length) return { erro: 'servico' };
 
             const cliente = await ClienteModel.buscarPorTelefone(empresaId, telefone, conexao);
+            if (cliente) {
+                const [ativas] = await conexao.execute(
+                    "SELECT id FROM agendamentos WHERE empresa_id = ? AND cliente_id = ? AND status IN ('agendado', 'confirmado') AND posicao_fila IS NOT NULL LIMIT 1",
+                    [empresaId, cliente.id]
+                );
+                if (ativas.length) return { erro: 'entrada_ativa' };
+            }
             const clienteId = cliente?.id ??
                 await ClienteModel.criar(empresaId, nome, telefone, null, null, conexao);
             return inserirNaFila(conexao, empresaId, clienteId, servicoId, null, data, ticketHash);

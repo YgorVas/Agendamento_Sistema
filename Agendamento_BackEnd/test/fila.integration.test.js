@@ -274,6 +274,8 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         assert.deepEqual(respostas.map(resposta => resposta.status).sort(), [200, 201]);
         const [primeira, segunda] = await Promise.all(respostas.map(resposta => resposta.json()));
         assert.deepEqual(primeira, segunda);
+        const duplicada = await enviar({ ...pedido, nome: 'Outro nome', ticket: randomBytes(32).toString('hex') });
+        assert.equal(duplicada.status, 409);
         const consulta = await requisicao('/agendamentos/ticket', ticket);
         assert.equal(consulta.status, 200);
         assert.equal((await consulta.json()).posicao_fila, primeira.posicao_fila);

@@ -41,6 +41,7 @@ async function entrar(req, res) {
             Number(empresaId), nomeCliente, telefone, servico_id, dataLocal.format(new Date()),
             createHash('sha256').update(ticket).digest()
         );
+        if (fila.erro === 'entrada_ativa') return res.status(409).json({ erro: 'Já existe uma entrada ativa para este telefone. Consulte seu ticket ou procure o estabelecimento.' });
         if (fila.erro) return res.status(404).json({ erro: 'Estabelecimento ou serviço não encontrado.' });
         return res.status(fila.existente ? 200 : 201).json({ posicao_fila: fila.posicao });
     } catch (erro) {

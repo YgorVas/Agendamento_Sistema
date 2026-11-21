@@ -1,0 +1,13 @@
+{
+  "version": "5",
+  "dialect": "pg",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1795278495228,
+      "tag": "0000_quick_lady_mastermind",
+      "breakpoints": true
+    }
+  ]
+}

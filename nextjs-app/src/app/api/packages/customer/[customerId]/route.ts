@@ -7,11 +7,12 @@ import { requireAuth, ResponseError } from "@/lib/auth";
 
 export async function GET(
   request: Request,
-  { params }: { params: { customerId: string } }
+  { params }: { params: Promise<{ customerId: string }> }
 ) {
   try {
     const auth = await requireAuth(request);
-    const customerId = Number(params.customerId);
+    const { customerId: rawCustomerId } = await params;
+    const customerId = Number(rawCustomerId);
     if (!customerId || isNaN(customerId)) {
       return NextResponse.json({ erro: "Invalid customer id" }, { status: 400 });
     }

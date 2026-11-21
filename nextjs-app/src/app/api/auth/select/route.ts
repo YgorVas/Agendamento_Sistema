@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     companyId: comercioId,
     role: membership.role,
   });
-  setAuthCookie(accessToken);
+  await setAuthCookie(accessToken);
 
   return NextResponse.json({
     token: accessToken,

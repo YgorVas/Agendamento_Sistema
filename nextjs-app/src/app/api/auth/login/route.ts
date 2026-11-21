@@ -68,7 +68,7 @@ export async function POST(request: Request) {
   if (memberships.length === 1) {
     const [{ comercioId, cargo }] = memberships;
     const token = signAccessToken({ userId: user.id, companyId: comercioId, role: cargo });
-    setAuthCookie(token);
+    await setAuthCookie(token);
     return NextResponse.json({ token, comercioId, cargo });
   }
 

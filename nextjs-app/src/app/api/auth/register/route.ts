@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     });
 
     const token = signAccessToken(result);
-    setAuthCookie(token);
+    await setAuthCookie(token);
 
     return NextResponse.json(
       { mensagem: "Empresa e conta criadas com sucesso!", ...result },

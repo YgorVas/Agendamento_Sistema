@@ -37,9 +37,10 @@ function phoneInVariants(column: typeof customers.phone, phone: string) {
 
 export async function POST(
   request: Request,
-  { params }: { params: { companyId: string } }
+  { params }: { params: Promise<{ companyId: string }> }
 ) {
-  const companyId = Number(params.companyId);
+  const { companyId: rawCompanyId } = await params;
+  const companyId = Number(rawCompanyId);
   if (!companyId || isNaN(companyId)) {
     return NextResponse.json(
       { erro: "Estabelecimento não encontrado." },

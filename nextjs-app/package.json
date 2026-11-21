@@ -18,6 +18,8 @@
     "setup": "npm run db:init && npm run db:push && npm run db:seed"
   },
   "dependencies": {
+    "@neon/config": "^1.14.6",
+    "@neon/env": "^2.1.9",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.45.4",

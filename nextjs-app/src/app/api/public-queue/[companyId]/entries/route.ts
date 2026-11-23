@@ -20,10 +20,10 @@ import { hashTicket } from "@/lib/ticket";
 import { phoneVariants } from "@/lib/phone";
 import { todaySPString, parseISODate } from "@/lib/date";
 import { z } from "zod";
+import { limitRequest } from "@/lib/rate-limit";
+import { clientRegistrationSchema, clientRegistrationError, fullNameFits } from "@/lib/client-registration";
 
-const entrySchema = z.object({
-  nome: z.string().min(1).max(100),
-  telefone_whatsapp: z.string().min(1).max(20),
+const entrySchema = clientRegistrationSchema.extend({
   servico_id: z.number().int().positive().optional(),
   servico_ids: z.array(z.number().int().positive()).optional(),
   ticket: z.string().regex(/^[0-9a-f]{64}$/),
@@ -37,9 +37,12 @@ function phoneInVariants(column: typeof customers.phone, phone: string) {
 
 export async function POST(
   request: Request,
-  { params }: { params: { companyId: string } }
+  { params }: { params: Promise<{ companyId: string }> }
 ) {
-  const companyId = Number(params.companyId);
+  const limited = await limitRequest(request, "queue");
+  if (limited) return limited;
+
+  const companyId = Number((await params).companyId);
   if (!companyId || isNaN(companyId)) {
     return NextResponse.json(
       { erro: "Estabelecimento não encontrado." },
@@ -55,14 +58,14 @@ export async function POST(
   }
 
   const parsed = entrySchema.safeParse(body);
-  if (!parsed.success) {
+  if (!parsed.success || !fullNameFits(parsed.data)) {
     return NextResponse.json(
-      { erro: "Confira seu nome, WhatsApp e escolha serviços sem repetição." },
+      { erro: `${clientRegistrationError} Selecione pelo menos um serviço e confira sua entrada.` },
       { status: 400 }
     );
   }
 
-  const { nome, telefone_whatsapp, servico_id, servico_ids, ticket } = parsed.data;
+  const { nome, sobrenome, telefone_whatsapp: phone, servico_id, servico_ids, ticket } = parsed.data;
   const serviceIds = servico_ids ?? (servico_id ? [servico_id] : []);
 
   if (
@@ -70,13 +73,12 @@ export async function POST(
     new Set(serviceIds).size !== serviceIds.length
   ) {
     return NextResponse.json(
-      { erro: "Confira seu nome, WhatsApp e escolha serviços sem repetição." },
+      { erro: "Selecione pelo menos um serviço, sem repetição." },
       { status: 400 }
     );
   }
 
-  const phone = telefone_whatsapp.trim();
-  const name = nome.trim();
+  const name = `${nome} ${sobrenome}`;
   const ticketHash = hashTicket(ticket);
   const attendanceDate = parseISODate(todaySPString());
 

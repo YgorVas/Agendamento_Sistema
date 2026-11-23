@@ -1,8 +1,83 @@
 # Sistema de Agendamento B2B e Fila Diária
 
-O painel permite cadastrar clientes, gerar senhas de atendimento e chamar, concluir ou cancelar atendimentos. A API Express grava a fila no MySQL e também gerencia serviços, pacotes e saldos de sessões. O chatbot pode ser conectado à WhatsApp Cloud API; os avisos automáticos ao próximo cliente continuam simulados.
+O painel permite cadastrar clientes, gerar senhas de atendimento e chamar, concluir ou cancelar atendimentos. O repositório inclui uma aplicação Next.js com PostgreSQL em `nextjs-app` e uma aplicação Express com MySQL em `Agendamento_BackEnd`.
 
-## Primeira execução no Windows
+## Next.js e PostgreSQL no Windows
+
+Você precisa de **Node.js 20.9 ou superior** e do **Docker Desktop com Docker Compose**. Abra o Docker Desktop e, no PowerShell, execute os comandos a seguir a partir da raiz do repositório.
+
+### Primeira execução
+
+```powershell
+cd nextjs-app
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+notepad .env
+```
+
+Use a `DATABASE_URL` do [arquivo de exemplo](nextjs-app/.env.example) para conectar ao PostgreSQL do Docker em `127.0.0.1:5433`. Se o `.env` local ainda aponta para a configuração antiga do Compose na porta 5432, atualize essa linha. Em `AUTH_SECRET`, cole o valor gerado pelo comando do Node.js. Se você já configurou um segredo, mantenha o valor existente. As variáveis do WhatsApp são opcionais. Mantenha o `.env` fora do Git.
+
+Salve o arquivo e execute:
+
+```powershell
+docker compose up --wait postgres
+npm.cmd ci --ignore-scripts
+npm.cmd run db:push
+npm.cmd run dev -- --webpack
+```
+
+O `db:push` cria as tabelas no banco local. O comando de desenvolvimento usa Webpack para contornar uma falha de compilação de CSS observada com o Turbopack no Windows. Deixe o terminal aberto, gere um convite conforme as instruções abaixo, acesse o [login local](http://localhost:3000/login) e escolha **Cadastrar empresa com convite**. O PostgreSQL começa com uma base própria. Para usar dados existentes do MySQL, é preciso migrá-los separadamente.
+
+Para testar com dados de demonstração, execute `npm.cmd run db:seed` em outro terminal na pasta `nextjs-app`. O comando mostra a senha da conta `demo-admin@example.invalid`.
+
+### Execuções seguintes
+
+Com o Docker Desktop aberto, rode estes comandos na pasta `nextjs-app`:
+
+```powershell
+docker compose up --wait postgres
+npm.cmd run dev -- --webpack
+```
+
+Os dados ficam no volume do PostgreSQL. Repita `npm.cmd ci --ignore-scripts` quando as dependências mudarem e `npm.cmd run db:push` quando o esquema do banco mudar.
+
+### Operação do piloto no Next.js
+
+Execute os comandos na pasta `nextjs-app`. Em um banco novo ou já gerenciado pelas migrações do Drizzle, aplique `npm.cmd run db:migrate` antes de publicar. Se a base foi criada com `db:push`, siga esse mesmo fluxo no ambiente de desenvolvimento. Para uma base com dados reais criada dessa forma, valide primeiro a correspondência entre o esquema existente e o histórico versionado em uma cópia da base.
+
+**Convites.** Gere um código para o e-mail com que o dono vai cadastrar a loja. Para **Criar outra empresa** pelo painel, use o tipo `nova-loja` com o e-mail da nova loja. Entregue o código em canal privado. Ele vale 72 horas e só pode ser usado uma vez.
+
+```powershell
+npm.cmd run pilot -- convidar dono@exemplo.com
+npm.cmd run pilot -- convidar filial@exemplo.com nova-loja
+```
+
+**Recuperação de acesso.** Configure `PILOT_SUPPORT_EMAIL` com o endereço que deve aparecer em **Esqueci minha senha**. Confirme a identidade do solicitante e entregue o código por um canal já verificado com o titular. A recuperação usa o e-mail da conta de login. O código é de uso único, expira em 30 minutos e substitui qualquer código anterior da conta. A redefinição invalida as sessões anteriores.
+
+```powershell
+npm.cmd run pilot -- recuperar dono@exemplo.com
+```
+
+**Solicitações de dados.** Em **Clientes**, um administrador seleciona o cadastro, solicita **Exportação de dados** ou **Exclusão de dados** e acompanha o protocolo no histórico da loja. O suporte deve consultar as pendências, confirmar a autorização para tratá-las e conferir os IDs do cliente e da loja antes de acessar dados. Para exportação, revise os dados cadastrais, os atendimentos, os pacotes e os registros de serviços associados e entregue o arquivo por um canal privado. Para exclusão, revise primeiro os vínculos e a retenção aplicável. A remoção direta da linha do cliente no banco também remove dados relacionados em cascata, incluindo registros que compõem o financeiro. Registre o resultado após concluir a análise e atender ou recusar o pedido.
+
+```powershell
+npm.cmd run pilot -- solicitacoes
+npm.cmd run pilot -- resolver 123 atendida
+```
+
+**Limites de requisições.** O PostgreSQL compartilha os contadores entre instâncias. O login aceita 30 tentativas por origem e 20 por e-mail a cada 15 minutos, o cadastro aceita 10 por origem por hora e a entrada pública aceita 60 por origem a cada 15 minutos. A recuperação aceita 15 por origem a cada 15 minutos. O servidor retorna `429` e `Retry-After` ao atingir um limite. Em produção, configure `TRUSTED_CLIENT_IP_HEADER` somente quando o proxy confiável substituir esse cabeçalho por um único IP e o backend não aceitar conexões diretas da internet. Sem um IP confiável, as requisições compartilham o limite da operação. Rode `npm.cmd run pilot -- limpar-expirados` periodicamente para remover contadores e códigos vencidos.
+
+**Teste de integração.** Use uma instância isolada do Next.js com `TRUSTED_CLIENT_IP_HEADER=x-real-ip` e um PostgreSQL descartável com as migrações aplicadas. Aponte `PILOT_TEST_BASE_URL` e `PILOT_TEST_DATABASE_URL` para essa instância e rode `npm.cmd run test:pilot`. O teste cria lojas e clientes fictícios na base indicada.
+
+### Usar um pacote durante o atendimento
+
+Na aba **Fila** do painel, clique em **Chamar Próximo**. Em **Em Atendimento**, selecione um pacote válido do cliente para cada serviço compatível ou mantenha **Sem pacote**. Ao clicar em **Concluir Atendimento**, o sistema desconta uma sessão de cada pacote escolhido e registra a cobertura no financeiro. Os pacotes já descontados no balcão aparecem como **Pacote registrado**.
+
+Podemos adicionar à fila pública a opção **Usar meu pacote nos serviços que ele cobre**. Após verificar o número do cliente com um código, o sistema poderá mostrar os serviços cobertos e descontar as sessões automaticamente ao concluir o atendimento.
+
+## Express e MySQL no Windows
+
+A API Express grava a fila no MySQL e também gerencia serviços, pacotes e saldos de sessões. O chatbot pode ser conectado à WhatsApp Cloud API. Os avisos automáticos ao próximo cliente são simulados.
 
 Você precisa de **Node.js 18 ou superior**, **MySQL 8 em execução** e uma conta com permissão para criar o banco e as tabelas. Os comandos de terminal abaixo são para **PowerShell**. Execute os blocos SQL em um cliente MySQL, como o MySQL Workbench.
 
@@ -176,7 +251,7 @@ Pacotes cadastrados antes do vínculo com serviços precisam ser associados ao s
 
 ## Entrada pública e acompanhamento
 
-No painel conectado, use **Abrir página de entrada dos clientes** para obter o link do estabelecimento, como `/fila.html?empresa=1`. O cliente informa nome e WhatsApp, escolhe um ou mais serviços e recebe um único ticket. Cadastros existentes na mesma empresa são encontrados pelo telefone, ignorando pontuação e o prefixo brasileiro 55. O nome cadastrado é preservado. O uso de pacotes é registrado pela equipe no balcão.
+No painel conectado, use **Abrir página de entrada dos clientes** para obter o link do estabelecimento, como `/fila.html?empresa=1`. A entrada pública e o cadastro de clientes no balcão exigem nome e sobrenome em campos separados e um WhatsApp no formato `82 988887777`. O sistema salva o telefone de novos clientes apenas com dígitos. Cadastros existentes na mesma empresa são encontrados pelo telefone, ignorando pontuação e o prefixo brasileiro 55. O nome cadastrado é preservado. Na entrada pública, o cliente escolhe um ou mais serviços e recebe um único ticket. A equipe registra o uso de pacotes no balcão.
 
 Ao registrar pelo balcão, use **Abrir link do cliente** na confirmação para compartilhar o ticket individual. Use o endereço HTTPS do sistema quando compartilhar links fora da máquina local. O ticket mostra a posição e o andamento daquela entrada.
 
@@ -209,7 +284,7 @@ O painel em `/` e `/dashboard` usa o login em `/login`. Nas rotas autenticadas, 
 | `POST /auth/iniciar-selecao` | Gera um token temporário para trocar de loja a partir de uma sessão válida. |
 | `GET /servicos` | Lista os serviços do comércio associado ao JWT de acesso. |
 | `GET /testar-conexao` | Testa a conexão MySQL. |
-| `POST /clientes` | Cadastra cliente com `nome` e `telefone_whatsapp`. |
+| `POST /clientes` | Cadastra cliente com `nome`, `sobrenome` e `telefone_whatsapp` no formato `82 988887777`. |
 | `GET /clientes` | Lista clientes da empresa. |
 | `POST /servicos` | Cadastra serviço com `nome`, `duracao_minutos` e `preco`. |
 | `POST /pacotes` | Cadastra modelo com `servico_id`, `nome`, `total_sessoes`, `preco_total` e `dias_validade` opcional. |
@@ -218,7 +293,7 @@ O painel em `/` e `/dashboard` usa o login em `/login`. Nas rotas autenticadas, 
 | `GET /pacotes/cliente/:cliente_id` | Consulta saldo e validade dos pacotes do cliente. |
 | `POST /agendamentos/fila` | Recebe `cliente_id`, `data_atendimento` no formato `AAAA-MM-DD` e `servicos`, uma lista de objetos com `servico_id` e `cliente_pacote_id` opcional. Também aceita o formato anterior com um serviço no corpo. Retorna `ticket` para a consulta pública. |
 | `GET /fila-publica/:empresa_id/servicos` | Retorna o nome do estabelecimento e o catálogo de serviços. |
-| `POST /fila-publica/:empresa_id/entradas` | Recebe `nome`, `telefone_whatsapp`, `servico_ids` (ou um `servico_id`) e um `ticket` aleatório de 64 caracteres hexadecimais gerado pela página. Retorna a posição na fila do dia. Reenvie o mesmo ticket ao repetir uma requisição. |
+| `POST /fila-publica/:empresa_id/entradas` | Recebe `nome`, `sobrenome`, `telefone_whatsapp` no formato `82 988887777`, `servico_ids` (ou um `servico_id`) e um `ticket` aleatório de 64 caracteres hexadecimais gerado pela página. Retorna a posição na fila do dia. Reenvie o mesmo ticket ao repetir uma requisição. |
 | `GET /agendamentos/ticket` | Usa `Authorization: Bearer <ticket>`. Retorna `posicao_fila`, `status` e `pessoas_na_frente`, ou `404` se o ticket estiver ausente ou for inválido. |
 | `GET /agendamentos/fila/:data_atendimento` | Lista a fila do dia com os serviços e a duração total de cada entrada. |
 | `GET /agendamentos/proximo/:data_atendimento` | Consulta o próximo cliente da fila e seus serviços. |

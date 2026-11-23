@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch, formatCurrency } from "@/lib/api-client";
+import { mobilePhoneHint, mobilePhonePattern } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ function PublicQueueContent() {
   const [catalog, setCatalog] = useState<any>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [name, setName] = useState("");
+  const [surname, setSurname] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -64,7 +66,8 @@ function PublicQueueContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nome: name.trim(),
-          telefone_whatsapp: phone.trim(),
+          sobrenome: surname.trim(),
+          telefone_whatsapp: phone,
           servico_ids: selected,
           ticket,
         }),
@@ -87,7 +90,7 @@ function PublicQueueContent() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 p-4">
+    <main className="min-h-screen p-4">
       <div className="max-w-md mx-auto bg-white rounded-2xl shadow-lg p-6 mt-10">
         <h1 className="text-2xl font-bold mb-1">Entrar na fila</h1>
         {catalog && (
@@ -96,8 +99,12 @@ function PublicQueueContent() {
         {error && <p className="text-sm text-rose-600 mb-4">{error}</p>}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium">Nome completo</label>
+            <label htmlFor="nome" className="block text-sm font-medium">Nome</label>
             <input
+              id="nome"
+              autoComplete="given-name"
+              maxLength={100}
+              pattern={".*\\S.*"}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded-xl border p-2.5"
@@ -105,8 +112,26 @@ function PublicQueueContent() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium">WhatsApp com DDD</label>
+            <label htmlFor="sobrenome" className="block text-sm font-medium">Sobrenome</label>
             <input
+              id="sobrenome"
+              autoComplete="family-name"
+              maxLength={100}
+              pattern={".*\\S.*"}
+              value={surname}
+              onChange={(e) => setSurname(e.target.value)}
+              className="w-full rounded-xl border p-2.5"
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="whatsapp" className="block text-sm font-medium">WhatsApp com DDD</label>
+            <input
+              id="whatsapp"
+              autoComplete="tel-national"
+              placeholder="82 988887777"
+              title={mobilePhoneHint}
+              pattern={mobilePhonePattern}
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               className="w-full rounded-xl border p-2.5"

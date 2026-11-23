@@ -13,11 +13,11 @@ import { isValidISODate, parseISODate } from "@/lib/date";
 
 export async function GET(
   request: Request,
-  { params }: { params: { date: string } }
+  { params }: { params: Promise<{ date: string }> }
 ) {
   try {
     const auth = await requireAuth(request);
-    const dateParam = params.date;
+    const dateParam = (await params).date;
 
     if (!isValidISODate(dateParam)) {
       return NextResponse.json(

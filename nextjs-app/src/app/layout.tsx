@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SistemaAgendamento",
+  title: "Agendai",
   description: "Sistema de agendamento e fila diária",
 };
 

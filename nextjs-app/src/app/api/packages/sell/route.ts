@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { customerPackages, customers, servicePackages } from "@/db/schema";
-import { requireAuth, ResponseError } from "@/lib/auth";
+import { requireManagement, ResponseError } from "@/lib/auth";
 import { z } from "zod";
 
 const sellSchema = z.object({
@@ -13,7 +13,7 @@ const sellSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requireManagement(request);
 
     let body: unknown;
     try {
@@ -32,41 +32,43 @@ export async function POST(request: Request) {
 
     const { cliente_id, pacote_id } = parsed.data;
 
-    const [result] = await db
-      .select({
-        totalSessions: servicePackages.totalSessions,
-        validityDays: servicePackages.validityDays,
-      })
-      .from(servicePackages)
-      .innerJoin(customers, eq(servicePackages.companyId, customers.companyId))
-      .where(
-        and(
-          eq(servicePackages.id, pacote_id),
-          eq(servicePackages.companyId, auth.companyId),
-          eq(customers.id, cliente_id)
+    const { sold, result } = await db.transaction(async (tx) => {
+      const [result] = await tx
+        .select({
+          totalSessions: servicePackages.totalSessions,
+          validityDays: servicePackages.validityDays,
+        })
+        .from(servicePackages)
+        .innerJoin(customers, eq(servicePackages.companyId, customers.companyId))
+        .where(
+          and(
+            eq(servicePackages.id, pacote_id),
+            eq(servicePackages.companyId, auth.companyId),
+            eq(servicePackages.available, true),
+            eq(customers.id, cliente_id)
+          )
         )
-      )
-      .limit(1);
+        .limit(1)
+        .for("share", { of: servicePackages });
 
-    if (!result) {
-      return NextResponse.json(
-        { erro: "Cliente ou pacote não encontrado." },
-        { status: 404 }
-      );
-    }
+      if (!result) {
+        throw new ResponseError("Cliente ou pacote não encontrado.", 404);
+      }
 
-    const validUntil = new Date();
-    validUntil.setDate(validUntil.getDate() + result.validityDays);
+      const validUntil = new Date();
+      validUntil.setDate(validUntil.getDate() + result.validityDays);
 
-    const [sold] = await db
-      .insert(customerPackages)
-      .values({
-        customerId: cliente_id,
-        packageId: pacote_id,
-        remainingSessions: result.totalSessions,
-        validUntil,
-      })
-      .returning();
+      const [sold] = await tx
+        .insert(customerPackages)
+        .values({
+          customerId: cliente_id,
+          packageId: pacote_id,
+          remainingSessions: result.totalSessions,
+          validUntil,
+        })
+        .returning();
+      return { sold, result };
+    });
 
     return NextResponse.json(
       {

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."package_status" ADD VALUE 'cancelado';

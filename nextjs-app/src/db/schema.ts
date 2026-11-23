@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   serial,
@@ -11,6 +12,7 @@ import {
   pgEnum,
   primaryKey,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["ADMIN", "GERENTE", "CAIXA"]);
@@ -24,6 +26,7 @@ export const packageStatusEnum = pgEnum("package_status", [
   "ativo",
   "concluido",
   "expirado",
+  "cancelado",
 ]);
 
 export const companies = pgTable("companies", {
@@ -43,6 +46,7 @@ export const users = pgTable("users", {
   name: varchar("name", { length: 100 }).notNull(),
   email: varchar("email", { length: 254 }).notNull().unique(),
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  sessionVersion: integer("session_version").notNull().default(0),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 
@@ -87,6 +91,45 @@ export const customers = pgTable(
   })
 );
 
+export const rateLimits = pgTable("rate_limits", {
+  key: varchar("key", { length: 64 }).primaryKey(),
+  attempts: integer("attempts").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, (table) => [index("idx_rate_limits_expires").on(table.expiresAt)]);
+
+export const companyInviteKind = pgEnum("company_invite_kind", ["cadastro", "nova-loja"]);
+
+export const companyInvites = pgTable("company_invites", {
+  tokenHash: varchar("token_hash", { length: 64 }).primaryKey(),
+  email: varchar("email", { length: 100 }).notNull(),
+  kind: companyInviteKind("kind").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+export const passwordResets = pgTable("password_resets", {
+  userId: integer("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+export const dataRequestKind = pgEnum("data_request_kind", ["exportacao", "exclusao"]);
+export const dataRequestStatus = pgEnum("data_request_status", ["pendente", "atendida", "recusada"]);
+
+export const customerDataRequests = pgTable("customer_data_requests", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").references(() => customers.id, { onDelete: "set null" }),
+  requestedBy: integer("requested_by").references(() => users.id, { onDelete: "set null" }),
+  kind: dataRequestKind("kind").notNull(),
+  status: dataRequestStatus("status").notNull().default("pendente"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+}, (table) => [
+  index("idx_data_requests_company").on(table.companyId, table.id),
+  uniqueIndex("idx_data_requests_pending").on(table.companyId, table.customerId, table.kind)
+    .where(sql`${table.status} = 'pendente'`),
+]);
+
 export const services = pgTable("services", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id")
@@ -111,6 +154,7 @@ export const servicePackages = pgTable("service_packages", {
   totalSessions: integer("total_sessions").notNull(),
   totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
   validityDays: integer("validity_days").notNull().default(30),
+  available: boolean("available").notNull().default(true),
 });
 
 export const customerPackages = pgTable("customer_packages", {

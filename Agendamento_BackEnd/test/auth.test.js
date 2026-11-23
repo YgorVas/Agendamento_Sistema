@@ -23,7 +23,9 @@ test('autenticação HTTP isola comércios e revalida o acesso a cada chamada', 
         if (sql.includes('FROM usuario_comercios')) {
             assert.equal(params[0], 7);
             assert.match(sql, /e\.ativo = TRUE/);
-            return [params.length === 1 ? ativos : ativos.filter(c => c.comercioId === params[1])];
+            return [params.length === 1 ? ativos : ativos
+                .filter(c => c.comercioId === params[1])
+                .map(c => ({ ...c, usuarioNome: 'Usuário da loja' }))];
         }
         if (sql.includes('FROM clientes')) {
             assert.deepEqual(params, [22]);
@@ -86,7 +88,10 @@ test('autenticação HTTP isola comércios e revalida o acesso a cada chamada', 
     assert.equal((await chamar('/pacotes', { token, dados: { nome: 'Teste' } })).status, 403);
 
     const lojas = await chamar('/auth/comercios', { token });
-    assert.deepEqual(lojas, { status: 200, corpo: { comercios, comercioAtual: comercios[1] } });
+    assert.deepEqual(lojas, {
+        status: 200,
+        corpo: { comercios, comercioAtual: comercios[1], usuarioNome: 'Usuário da loja' }
+    });
     const troca = await chamar('/auth/iniciar-selecao', { token, dados: {} });
     assert.equal(troca.status, 200);
     assert.equal((await selecionar(11, troca.corpo.tokenTemporario)).corpo.cargo, 'ADMIN');

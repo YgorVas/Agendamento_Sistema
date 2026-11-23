@@ -1,6 +1,6 @@
 import { api, state } from './sessao.mjs';
 import { encerrarSessao, tokenAtual } from '../auth-api.mjs';
-import { exibirComercios, nomeCargo } from '../selecao-comercio.mjs';
+import { exibirComercios } from '../selecao-comercio.mjs';
 import { configurarFila, renderEmpresaView } from './fila.mjs';
 import { configurarBalcao, preencherClientes, populateServicoOptionsSelect, carregarPacotesCliente, renderClienteView } from './balcao.mjs';
 import { configurarCatalogo, renderCatalogo } from './catalogo.mjs';
@@ -9,6 +9,19 @@ import { showToast } from './toast.mjs';
 
 const painel = document.getElementById('painel');
 const linksMenu = [...document.querySelectorAll('#menu-painel a')];
+const alternarMenu = document.getElementById('alternar-menu');
+
+alternarMenu.onclick = () => {
+    const aberto = alternarMenu.getAttribute('aria-expanded') === 'true';
+    alternarMenu.setAttribute('aria-expanded', String(!aberto));
+};
+
+for (const link of linksMenu) {
+    link.addEventListener('click', () => {
+        alternarMenu.setAttribute('aria-expanded', 'false');
+        if (link.hash === window.location.hash) mostrarTela();
+    });
+}
 
 function mostrarTela() {
     if (painel.hidden) return;
@@ -70,7 +83,7 @@ const selecao = document.getElementById('selecao');
 async function conectarPainel() {
     const token = tokenAtual();
     try {
-        const { comercios, comercioAtual } = await api('/auth/comercios');
+        const { comercios, comercioAtual, usuarioNome } = await api('/auth/comercios');
         [state.clientes, state.servicos, state.pacotes] = await Promise.all([
             api('/clientes'), api('/servicos'), api('/pacotes')
         ]);
@@ -80,8 +93,9 @@ async function conectarPainel() {
         for (const link of linksMenu) {
             if (link.hash === '#financeiro' || link.hash === '#catalogo') link.hidden = !podeGerir;
         }
-        document.getElementById('loja-atual').textContent =
-            comercioAtual.nomeFantasia + ' · ' + nomeCargo(comercioAtual.cargo);
+        document.getElementById('usuario-atual').textContent = usuarioNome;
+        document.getElementById('loja-atual').textContent = comercioAtual.nomeFantasia;
+        document.getElementById('sessao-atual').hidden = false;
         document.getElementById('link-fila-publica').href =
             '/fila.html?empresa=' + comercioAtual.comercioId;
         preencherClientes();

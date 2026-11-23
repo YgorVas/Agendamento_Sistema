@@ -141,7 +141,13 @@ export default function DashboardPage() {
           }),
         });
         cid = res.cliente_id;
-        setClients([...clients, res.cliente]);
+        setClients((prev) => {
+          const idx = prev.findIndex((c) => c.id === res.cliente.id);
+          if (idx === -1) return [...prev, res.cliente];
+          const next = [...prev];
+          next[idx] = res.cliente;
+          return next;
+        });
       }
       const servicos = serviceItems
         .filter((i) => i.servico_id)

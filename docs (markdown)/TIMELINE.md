@@ -81,7 +81,7 @@ Os avisos automáticos ao próximo cliente continuam simulados.
 
 - No balcão do painel Next.js, administradores e gerentes podem cadastrar clientes sem selecionar um serviço ou gerar uma senha. O cliente fica pré-selecionado na aba **Clientes**.
 - A aba **Clientes** permite buscar por nome ou telefone, exibe os dois dados em cada resultado e reúne a consulta de saldo e validade, a atribuição e a remoção de pacotes. A atribuição foi movida da aba **Serviços e pacotes** para essa tela.
-- A remoção impede o uso do pacote em novos atendimentos e preserva o histórico. A [migração do PostgreSQL](nextjs-app/src/db/migrations/0002_customer_package_cancellation.sql) adiciona o estado de cancelamento.
+- A remoção impede o uso do pacote em novos atendimentos e preserva o histórico. A [migração do PostgreSQL](../nextjs-app/src/db/migrations/0002_customer_package_cancellation.sql) adiciona o estado de cancelamento.
 - A checagem de TypeScript e os testes com API e banco simulados passaram. O build foi bloqueado por uma falha de permissão ao criar diretórios. A migração ficou pendente no PostgreSQL local.
 
 ## 22/11/2026 — Uso de pacotes durante o atendimento

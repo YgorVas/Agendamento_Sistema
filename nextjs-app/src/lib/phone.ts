@@ -1,3 +1,6 @@
+export const mobilePhonePattern = "[0-9]{2} 9[0-9]{8}";
+export const mobilePhoneHint = "Exemplo: 82 988887777";
+
 export function normalizePhoneDigits(value: string): string {
   return value.replace(/\D/g, "");
 }

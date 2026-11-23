@@ -1,0 +1,1 @@
+ALTER TABLE "service_packages" ADD COLUMN "available" boolean DEFAULT true NOT NULL;

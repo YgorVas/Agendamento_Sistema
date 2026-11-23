@@ -180,9 +180,10 @@ export function configurarBalcao({ executarAcao, atualizarFila, diaAtual }) {
             let clienteId = Number(document.getElementById('select-cliente').value);
             if (!clienteId) {
                 const nome = document.getElementById('input-nome').value.trim();
-                const telefone = document.getElementById('input-whatsapp').value.trim();
+                const sobrenome = document.getElementById('input-sobrenome').value.trim();
+                const telefone = document.getElementById('input-whatsapp').value;
                 const novo = await api('/clientes', {
-                    method: 'POST', body: { nome, telefone_whatsapp: telefone }
+                    method: 'POST', body: { nome, sobrenome, telefone_whatsapp: telefone }
                 });
                 clienteId = novo.cliente_id;
                 if (!state.clientes.some(cliente => cliente.id === clienteId)) state.clientes.push(novo.cliente);

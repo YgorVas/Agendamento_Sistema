@@ -1,5 +1,8 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { and, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { companies, users, userCompanies } from "@/db/schema";
 import { env } from "./env";
 
 const ISSUER = "agendamento";
@@ -10,12 +13,14 @@ const SELECT_TTL = "5m";
 
 export type TokenPayload = {
   userId: number;
+  sessionVersion?: number;
   companyId: number;
   role: "ADMIN" | "GERENTE" | "CAIXA";
 };
 
 export type SelectionPayload = {
   userId: number;
+  sessionVersion?: number;
 };
 
 export async function hashPassword(password: string): Promise<string> {
@@ -105,7 +110,7 @@ export function getBearerToken(request: Request): string | undefined {
 
 export async function requireAuth(
   request: Request
-): Promise<TokenPayload> {
+): Promise<TokenPayload & { userName: string }> {
   const token =
     getBearerToken(request) ?? getCookieValue(request, "auth-token");
   if (!token) {
@@ -115,7 +120,28 @@ export async function requireAuth(
   if (!payload) {
     throw new ResponseError("Unauthorized", 401);
   }
-  return payload;
+  const [membership] = await db.select({ role: userCompanies.role, userName: users.name })
+    .from(userCompanies)
+    .innerJoin(users, eq(users.id, userCompanies.userId))
+    .innerJoin(companies, eq(companies.id, userCompanies.companyId))
+    .where(and(
+      eq(users.id, payload.userId),
+      eq(users.sessionVersion, payload.sessionVersion ?? 0),
+      eq(companies.id, payload.companyId),
+      eq(companies.active, true),
+    ));
+  if (!membership || membership.role !== payload.role) {
+    throw new ResponseError("Acesso indisponível. Entre novamente.", 401);
+  }
+  return { ...payload, userName: membership.userName };
+}
+
+export async function requireManagement(request: Request): Promise<TokenPayload> {
+  const auth = await requireAuth(request);
+  if (auth.role !== "ADMIN" && auth.role !== "GERENTE") {
+    throw new ResponseError("Esta operação exige um cargo de gestão.", 403);
+  }
+  return auth;
 }
 
 export class ResponseError extends Error {

@@ -2,9 +2,10 @@
     color-scheme: light;
     font-family: Inter, system-ui, sans-serif;
     color: #17251f;
-    background: #eef3ef;
-    --verde: #146447;
-    --verde-escuro: #0c4c35;
+    background: #F1F5F0;
+    --verde: #0E3604;
+    --verde-escuro: #092703;
+    --verde-claro: #77B567;
     --borda: #ccd8d0;
     --texto-secundario: #486057;
 }
@@ -15,7 +16,7 @@ body { margin: 0; }
 button, input { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: wait; opacity: .7; }
-:focus-visible { outline: 3px solid #128662; outline-offset: 3px; }
+:focus-visible { outline: 3px solid var(--verde); outline-offset: 3px; }
 
 .pagina-acesso {
     min-height: 100vh;
@@ -41,7 +42,7 @@ button:disabled { cursor: wait; opacity: .7; }
     gap: 1rem;
     padding: clamp(1.5rem, 4vw, 3rem);
     color: #f8fffb;
-    background: radial-gradient(ellipse at 100% 100%, #217658, transparent 65%), #133e32;
+    background: var(--verde);
     font-size: 1.125rem;
     font-weight: 700;
 }
@@ -51,9 +52,9 @@ button:disabled { cursor: wait; opacity: .7; }
     padding: .65rem;
     display: grid;
     place-items: center;
-    border: 1px solid #a9d6c5;
+    border: 1px solid var(--verde-claro);
     border-radius: .85rem;
-    color: #ddfcef;
+    color: var(--verde-claro);
 }
 
 .marca-icone svg { width: 100%; }
@@ -133,7 +134,7 @@ input {
 }
 .comercio:hover { background: #eaf5ee; border-color: var(--verde); }
 .comercio span, .lista-servicos span { font-size: .9rem; color: var(--texto-secundario); }
-.cabecalho { background: #133e32; color: white; }
+.cabecalho { background: var(--verde); color: white; }
 .cabecalho-interior {
     display: flex;
     align-items: center;

@@ -1,18 +1,17 @@
 const ClienteModel = require('../models/clienteModel');
+const { validarCadastroCliente, erroCadastro } = require('../services/cadastroCliente');
 
 const clienteController = {
     // POST /clientes - Cadastrar um novo cliente
     cadastrarCliente: async (req, res) => {
         try {
-            const { nome, telefone_whatsapp, email, observacoes } = req.body;
+            const dados = req.body ?? {};
+            const cadastro = validarCadastroCliente(dados);
+            if (!cadastro) return res.status(400).json({ erro: erroCadastro });
 
-            if (typeof nome !== 'string' || !nome.trim() || nome.trim().length > 100 ||
-                typeof telefone_whatsapp !== 'string' || telefone_whatsapp.length > 20 ||
-                !/^\+?[\d ().-]+$/.test(telefone_whatsapp) || !/^\d{10,15}$/.test(telefone_whatsapp.replace(/\D/g, ''))) {
-                return res.status(400).json({ erro: 'Informe nome e telefone válidos.' });
-            }
+            const { email, observacoes } = dados;
             const resultado = await ClienteModel.criarOuEncontrar(
-                req.comercioId, nome.trim(), telefone_whatsapp.trim(), email || null, observacoes || null
+                req.comercioId, cadastro.nome, cadastro.telefone, email || null, observacoes || null
             );
             return res.status(resultado.existente ? 200 : 201).json({
                 mensagem: resultado.existente ? 'Cliente já cadastrado.' : 'Cliente cadastrado com sucesso!',

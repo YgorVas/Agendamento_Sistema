@@ -1,10 +1,8 @@
 {
-  "id": "7d52b750-9987-4488-b0ab-cea9b6e5613e",
-  "prevId": "00000000-0000-0000-0000-000000000000",
-  "version": "5",
-  "dialect": "pg",
+  "version": "7",
+  "dialect": "postgresql",
   "tables": {
-    "appointment_services": {
+    "public.appointment_services": {
       "name": "appointment_services",
       "schema": "",
       "columns": {
@@ -32,41 +30,41 @@
         "appointment_services_appointment_id_appointments_id_fk": {
           "name": "appointment_services_appointment_id_appointments_id_fk",
           "tableFrom": "appointment_services",
-          "tableTo": "appointments",
           "columnsFrom": [
             "appointment_id"
           ],
+          "tableTo": "appointments",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "appointment_services_service_id_services_id_fk": {
           "name": "appointment_services_service_id_services_id_fk",
           "tableFrom": "appointment_services",
-          "tableTo": "services",
           "columnsFrom": [
             "service_id"
           ],
+          "tableTo": "services",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "appointment_services_customer_package_id_customer_packages_id_fk": {
           "name": "appointment_services_customer_package_id_customer_packages_id_fk",
           "tableFrom": "appointment_services",
-          "tableTo": "customer_packages",
           "columnsFrom": [
             "customer_package_id"
           ],
+          "tableTo": "customer_packages",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {
@@ -78,9 +76,12 @@
           ]
         }
       },
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "appointments": {
+    "public.appointments": {
       "name": "appointments",
       "schema": "",
       "columns": {
@@ -169,81 +170,102 @@
       },
       "indexes": {
         "idx_appointments_queue": {
-          "name": "idx_appointments_queue",
           "columns": [
-            "company_id",
-            "attendance_date",
-            "position"
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "attendance_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
-          "isUnique": false
+          "with": {},
+          "name": "idx_appointments_queue",
+          "isUnique": false,
+          "method": "btree",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "appointments_company_id_companies_id_fk": {
           "name": "appointments_company_id_companies_id_fk",
           "tableFrom": "appointments",
-          "tableTo": "companies",
           "columnsFrom": [
             "company_id"
           ],
+          "tableTo": "companies",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "appointments_customer_id_customers_id_fk": {
           "name": "appointments_customer_id_customers_id_fk",
           "tableFrom": "appointments",
-          "tableTo": "customers",
           "columnsFrom": [
             "customer_id"
           ],
+          "tableTo": "customers",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "appointments_legacy_service_id_services_id_fk": {
           "name": "appointments_legacy_service_id_services_id_fk",
           "tableFrom": "appointments",
-          "tableTo": "services",
           "columnsFrom": [
             "legacy_service_id"
           ],
+          "tableTo": "services",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         },
         "appointments_legacy_package_id_customer_packages_id_fk": {
           "name": "appointments_legacy_package_id_customer_packages_id_fk",
           "tableFrom": "appointments",
-          "tableTo": "customer_packages",
           "columnsFrom": [
             "legacy_package_id"
           ],
+          "tableTo": "customer_packages",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "appointments_ticket_hash_unique": {
           "name": "appointments_ticket_hash_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "ticket_hash"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "companies": {
+    "public.companies": {
       "name": "companies",
       "schema": "",
       "columns": {
@@ -310,21 +332,24 @@
       "uniqueConstraints": {
         "companies_tax_id_unique": {
           "name": "companies_tax_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "tax_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         },
         "companies_email_unique": {
           "name": "companies_email_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "email"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "customer_packages": {
+    "public.customer_packages": {
       "name": "customer_packages",
       "schema": "",
       "columns": {
@@ -378,34 +403,37 @@
         "customer_packages_customer_id_customers_id_fk": {
           "name": "customer_packages_customer_id_customers_id_fk",
           "tableFrom": "customer_packages",
-          "tableTo": "customers",
           "columnsFrom": [
             "customer_id"
           ],
+          "tableTo": "customers",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "customer_packages_package_id_service_packages_id_fk": {
           "name": "customer_packages_package_id_service_packages_id_fk",
           "tableFrom": "customer_packages",
-          "tableTo": "service_packages",
           "columnsFrom": [
             "package_id"
           ],
+          "tableTo": "service_packages",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "customers": {
+    "public.customers": {
       "name": "customers",
       "schema": "",
       "columns": {
@@ -455,33 +483,49 @@
       },
       "indexes": {
         "idx_customers_company_phone": {
-          "name": "idx_customers_company_phone",
           "columns": [
-            "company_id",
-            "phone"
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "phone",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
-          "isUnique": false
+          "with": {},
+          "name": "idx_customers_company_phone",
+          "isUnique": false,
+          "method": "btree",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "customers_company_id_companies_id_fk": {
           "name": "customers_company_id_companies_id_fk",
           "tableFrom": "customers",
-          "tableTo": "companies",
           "columnsFrom": [
             "company_id"
           ],
+          "tableTo": "companies",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "service_packages": {
+    "public.service_packages": {
       "name": "service_packages",
       "schema": "",
       "columns": {
@@ -540,34 +584,37 @@
         "service_packages_company_id_companies_id_fk": {
           "name": "service_packages_company_id_companies_id_fk",
           "tableFrom": "service_packages",
-          "tableTo": "companies",
           "columnsFrom": [
             "company_id"
           ],
+          "tableTo": "companies",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "service_packages_service_id_services_id_fk": {
           "name": "service_packages_service_id_services_id_fk",
           "tableFrom": "service_packages",
-          "tableTo": "services",
           "columnsFrom": [
             "service_id"
           ],
+          "tableTo": "services",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "service_records": {
+    "public.service_records": {
       "name": "service_records",
       "schema": "",
       "columns": {
@@ -628,42 +675,65 @@
       },
       "indexes": {
         "idx_service_records_company_date": {
-          "name": "idx_service_records_company_date",
           "columns": [
-            "company_id",
-            "completion_date",
-            "completed_at",
-            "appointment_id"
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "completion_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "completed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "appointment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
-          "isUnique": false
+          "with": {},
+          "name": "idx_service_records_company_date",
+          "isUnique": false,
+          "method": "btree",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "service_records_appointment_id_appointments_id_fk": {
           "name": "service_records_appointment_id_appointments_id_fk",
           "tableFrom": "service_records",
-          "tableTo": "appointments",
           "columnsFrom": [
             "appointment_id"
           ],
+          "tableTo": "appointments",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "service_records_company_id_companies_id_fk": {
           "name": "service_records_company_id_companies_id_fk",
           "tableFrom": "service_records",
-          "tableTo": "companies",
           "columnsFrom": [
             "company_id"
           ],
+          "tableTo": "companies",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -675,9 +745,12 @@
           ]
         }
       },
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "services": {
+    "public.services": {
       "name": "services",
       "schema": "",
       "columns": {
@@ -724,21 +797,24 @@
         "services_company_id_companies_id_fk": {
           "name": "services_company_id_companies_id_fk",
           "tableFrom": "services",
-          "tableTo": "companies",
           "columnsFrom": [
             "company_id"
           ],
+          "tableTo": "companies",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "user_companies": {
+    "public.user_companies": {
       "name": "user_companies",
       "schema": "",
       "columns": {
@@ -763,40 +839,53 @@
       },
       "indexes": {
         "idx_user_companies_company": {
-          "name": "idx_user_companies_company",
           "columns": [
-            "company_id",
-            "user_id"
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
-          "isUnique": false
+          "with": {},
+          "name": "idx_user_companies_company",
+          "isUnique": false,
+          "method": "btree",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "user_companies_user_id_users_id_fk": {
           "name": "user_companies_user_id_users_id_fk",
           "tableFrom": "user_companies",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "user_companies_company_id_companies_id_fk": {
           "name": "user_companies_company_id_companies_id_fk",
           "tableFrom": "user_companies",
-          "tableTo": "companies",
           "columnsFrom": [
             "company_id"
           ],
+          "tableTo": "companies",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -808,9 +897,12 @@
           ]
         }
       },
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "users": {
+    "public.users": {
       "name": "users",
       "schema": "",
       "columns": {
@@ -852,45 +944,57 @@
       "uniqueConstraints": {
         "users_email_unique": {
           "name": "users_email_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "email"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     }
   },
   "enums": {
-    "appointment_status": {
+    "public.appointment_status": {
       "name": "appointment_status",
-      "values": {
-        "agendado": "agendado",
-        "confirmado": "confirmado",
-        "concluido": "concluido",
-        "cancelado": "cancelado"
-      }
+      "schema": "public",
+      "values": [
+        "agendado",
+        "confirmado",
+        "concluido",
+        "cancelado"
+      ]
     },
-    "package_status": {
+    "public.package_status": {
       "name": "package_status",
-      "values": {
-        "ativo": "ativo",
-        "concluido": "concluido",
-        "expirado": "expirado"
-      }
+      "schema": "public",
+      "values": [
+        "ativo",
+        "concluido",
+        "expirado"
+      ]
     },
-    "role": {
+    "public.role": {
       "name": "role",
-      "values": {
-        "ADMIN": "ADMIN",
-        "GERENTE": "GERENTE",
-        "CAIXA": "CAIXA"
-      }
+      "schema": "public",
+      "values": [
+        "ADMIN",
+        "GERENTE",
+        "CAIXA"
+      ]
     }
   },
   "schemas": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
-    "tables": {}
-  }
+    "tables": {},
+    "columns": {}
+  },
+  "id": "7d52b750-9987-4488-b0ab-cea9b6e5613e",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "sequences": {},
+  "policies": {},
+  "views": {},
+  "roles": {}
 }

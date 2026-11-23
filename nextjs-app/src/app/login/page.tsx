@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api-client";
 
 export default function LoginPage() {
@@ -78,6 +79,7 @@ export default function LoginPage() {
           email: fd.get("email"),
           telefone: fd.get("telefone"),
           senha: fd.get("senha"),
+          convite: fd.get("convite"),
         }),
       });
       router.replace("/dashboard");
@@ -89,8 +91,9 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+    <main className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
+        <p className="mb-6 text-center text-3xl font-bold tracking-tight text-brand-600">Agendai</p>
         {mode === "login" && (
           <>
             <h1 className="text-2xl font-bold mb-1">Entrar no painel</h1>
@@ -124,14 +127,17 @@ export default function LoginPage() {
                 {loading ? "Entrando…" : "Entrar"}
               </button>
             </form>
-            <p className="mt-4 text-center text-sm">
+            <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-sm">
               <button
-                onClick={() => setMode("register")}
+                onClick={() => { setError(""); setMode("register"); }}
                 className="text-brand-600 font-semibold hover:underline"
               >
-                Cadastrar minha empresa
+                Cadastrar empresa com convite
               </button>
-            </p>
+              <Link href="/recuperar-acesso" className="font-semibold text-brand-600 hover:underline">
+                Esqueci minha senha
+              </Link>
+            </div>
           </>
         )}
 
@@ -164,6 +170,10 @@ export default function LoginPage() {
                 required
                 className="w-full rounded-xl border p-2.5"
               />
+              <label className="block text-sm font-medium">
+                Código do convite
+                <input name="convite" required autoComplete="off" spellCheck={false} className="mt-1 w-full rounded-xl border p-2.5" />
+              </label>
               <input
                 name="senha"
                 type="password"
@@ -182,7 +192,7 @@ export default function LoginPage() {
             </form>
             <p className="mt-4 text-center text-sm">
               <button
-                onClick={() => setMode("login")}
+                onClick={() => { setError(""); setMode("login"); }}
                 className="text-slate-600 hover:underline"
               >
                 Voltar ao login

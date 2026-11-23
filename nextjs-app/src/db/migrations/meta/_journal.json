@@ -8,6 +8,27 @@
       "when": 1795278495228,
       "tag": "0000_quick_lady_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795393086632,
+      "tag": "0001_package_catalog_availability",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795395170875,
+      "tag": "0002_customer_package_cancellation",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795416802042,
+      "tag": "0003_pilot_access_and_data_requests",
+      "breakpoints": true
     }
   ]
 }

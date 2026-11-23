@@ -8,11 +8,11 @@ import { isValidISODate, parseISODate } from "@/lib/date";
 
 export async function GET(
   request: Request,
-  { params }: { params: { date: string } }
+  { params }: { params: Promise<{ date: string }> }
 ) {
   try {
     const auth = await requireAuth(request);
-    const dateParam = params.date;
+    const dateParam = (await params).date;
 
     if (!isValidISODate(dateParam)) {
       return NextResponse.json(
@@ -27,12 +27,13 @@ export async function GET(
         appointmentId: appointments.id,
         position: appointments.position,
         status: appointments.status,
+        customerId: customers.id,
         customerName: customers.name,
         customerPhone: customers.phone,
         serviceId: services.id,
         serviceName: services.name,
         durationMinutes: services.durationMinutes,
-        customerPackageId: appointmentServices.customerPackageId,
+        customerPackageId: sql<number | null>`CASE WHEN ${appointmentServices.serviceId} IS NULL THEN ${appointments.legacyPackageId} ELSE ${appointmentServices.customerPackageId} END`,
       })
       .from(appointments)
       .innerJoin(customers, eq(appointments.customerId, customers.id))
@@ -40,7 +41,7 @@ export async function GET(
         appointmentServices,
         eq(appointments.id, appointmentServices.appointmentId)
       )
-      .leftJoin(services, eq(appointmentServices.serviceId, services.id))
+      .leftJoin(services, eq(services.id, sql`coalesce(${appointmentServices.serviceId}, ${appointments.legacyServiceId})`))
       .where(
         and(
           eq(appointments.companyId, auth.companyId),
@@ -57,6 +58,7 @@ export async function GET(
         id: number;
         posicao_fila: number;
         status: string;
+        cliente_id: number;
         cliente_nome: string;
         cliente_telefone: string;
         duracao_minutos: number;
@@ -75,6 +77,7 @@ export async function GET(
           id: row.appointmentId,
           posicao_fila: row.position!,
           status: row.status,
+          cliente_id: row.customerId,
           cliente_nome: row.customerName,
           cliente_telefone: row.customerPhone,
           duracao_minutos: 0,

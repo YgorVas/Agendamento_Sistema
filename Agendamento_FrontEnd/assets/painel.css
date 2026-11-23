@@ -1,3 +1,7 @@
+html {
+    background: #F1F5F0;
+}
+
 /* Pulse Animation for Status Indicators */
 @keyframes pulse-ring {
     0% { transform: scale(0.95); opacity: 0.8; }
@@ -67,30 +71,81 @@
     font-size: 0.875rem;
 }
 
+#estado-conexao:empty {
+    display: none;
+}
+
+#painel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 1rem;
+}
+
+#painel > section {
+    min-width: 0;
+}
+
+#alternar-menu {
+    display: flex;
+}
+
+#menu-painel {
+    display: none;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+#alternar-menu[aria-expanded="true"] + #menu-painel {
+    display: flex;
+    margin-top: 0.5rem;
+}
+
+@media (min-width: 48rem) {
+    #painel {
+        grid-template-columns: 13rem minmax(0, 1fr);
+    }
+
+    .sidebar-painel {
+        position: sticky;
+        top: 1rem;
+        align-self: start;
+    }
+
+    #alternar-menu {
+        display: none;
+    }
+
+    #menu-painel,
+    #alternar-menu[aria-expanded="true"] + #menu-painel {
+        display: flex;
+        margin-top: 0;
+    }
+}
+
 #menu-painel a {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     border-radius: 0.75rem;
     padding: 0.65rem 0.8rem;
-    color: #334155;
+    color: #0E3604;
     font-size: 0.875rem;
     font-weight: 600;
     line-height: 1.25;
 }
 
 #menu-painel a:hover {
-    background: #f1f5f9;
+    background: #F1F5F0;
 }
 
 #menu-painel a:focus-visible {
-    outline: 2px solid #059669;
+    outline: 2px solid #0E3604;
     outline-offset: -2px;
 }
 
 #menu-painel a[aria-current="page"] {
-    background: #d1fae5;
-    color: #065f46;
+    background: #77B567;
 }
 
 @page historico-financeiro {
@@ -117,6 +172,7 @@
 
     #painel:has(#view-financeiro:not([hidden]) #resultado-periodo-financeiro:not([hidden])) {
         page: historico-financeiro;
+        display: block;
         max-width: none;
         margin: 0;
         padding: 0;

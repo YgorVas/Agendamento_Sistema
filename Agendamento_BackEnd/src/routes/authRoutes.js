@@ -113,7 +113,7 @@ router.get('/comercios', verificarInstancia, async (req, res) => {
     if (!comercioAtual || comercioAtual.cargo !== req.cargo) {
         return res.status(403).json({ erro: 'Acesso indisponível para este comércio.' });
     }
-    return res.json({ comercios, comercioAtual });
+    return res.json({ comercios, comercioAtual, usuarioNome: req.usuarioNome });
 });
 
 router.post('/iniciar-selecao', verificarInstancia, async (req, res) => {

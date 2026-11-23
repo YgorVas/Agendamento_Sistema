@@ -49,7 +49,8 @@ formulario.addEventListener('submit', async evento => {
     }
     const body = {
         nome: campos.get('nome').trim(),
-        telefone_whatsapp: campos.get('telefone_whatsapp').trim(),
+        sobrenome: campos.get('sobrenome').trim(),
+        telefone_whatsapp: campos.get('telefone_whatsapp'),
         servico_ids: servicoIds
     };
     const chave = JSON.stringify(body);

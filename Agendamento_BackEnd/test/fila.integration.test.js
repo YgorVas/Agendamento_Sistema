@@ -283,8 +283,10 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
     });
 
     await t.test('balcão e entrada pública reutilizam cliente pelo telefone em cada empresa', async () => {
-        const pedido = { nome: 'Cliente original', telefone_whatsapp: '(11) 98888-7777' };
+        const pedido = { nome: ' Cliente ', sobrenome: ' original ', telefone_whatsapp: '11 988887777' };
         const criar = (token, dados) => requisicao('/clientes', token, 'POST', dados);
+        assert.equal((await criar(tokenA, { ...pedido, sobrenome: undefined })).status, 400);
+        assert.equal((await criar(tokenA, { ...pedido, telefone_whatsapp: '(11) 98888-7777' })).status, 400);
         const respostas = await Promise.all([criar(tokenA, pedido), criar(tokenA, pedido)]);
         assert.deepEqual(respostas.map(r => r.status).sort(), [200, 201]);
         const clientes = await Promise.all(respostas.map(r => r.json()));
@@ -295,13 +297,14 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         assert.notEqual(outroId, clientes[0].cliente_id);
         await db.execute('DELETE FROM clientes WHERE id = ? AND empresa_id = 2', [outroId]);
         const pedidoPublico = {
-            nome: 'Nome diferente', telefone_whatsapp: '5511988887777', servico_id: 1, ticket: randomBytes(32).toString('hex')
+            nome: 'Nome', sobrenome: 'diferente', telefone_whatsapp: pedido.telefone_whatsapp,
+            servico_id: 1, ticket: randomBytes(32).toString('hex')
         };
         const publica = await entrarPublica(pedidoPublico);
         assert.equal(publica.status, 201);
         assert.equal((await entrar({ ...entrada, cliente_id: clientes[0].cliente_id })).status, 409);
-        const [registros] = await db.execute("SELECT nome FROM clientes WHERE empresa_id = 1 AND REGEXP_REPLACE(telefone_whatsapp, '[^0-9]', '') IN (?, ?)", ['11988887777', '5511988887777']);
-        assert.deepEqual(registros.map(c => c.nome), ['Cliente original']);
+        const [registros] = await db.execute("SELECT nome, telefone_whatsapp FROM clientes WHERE empresa_id = 1 AND REGEXP_REPLACE(telefone_whatsapp, '[^0-9]', '') IN (?, ?)", ['11988887777', '5511988887777']);
+        assert.deepEqual(registros, [{ nome: 'Cliente original', telefone_whatsapp: '11988887777' }]);
 
         const [[ativa]] = await db.execute("SELECT id FROM agendamentos WHERE cliente_id = ? AND status = 'agendado'", [clientes[0].cliente_id]);
         assert.equal((await mudar(ativa.id, 'cancelado')).status, 200);
@@ -309,7 +312,7 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         assert.equal(filaBalcao.status, 201);
         assert.equal((await entrarPublica({ ...pedidoPublico, ticket: randomBytes(32).toString('hex') })).status, 409);
         const [legado] = await db.execute(`INSERT INTO clientes (empresa_id, nome, telefone_whatsapp)
-            VALUES (1, 'Cadastro legado', ?)`, [pedidoPublico.telefone_whatsapp]);
+            VALUES (1, 'Cadastro legado', ?)`, ['+55 (11) 98888-7777']);
         assert.equal((await entrar({ ...entrada, cliente_id: legado.insertId })).status, 409);
         const { agendamento_id: id } = await filaBalcao.json();
         assert.equal((await mudar(id, 'cancelado')).status, 200);
@@ -323,14 +326,16 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         assert.deepEqual(dados.servicos.map(servico => servico.id).sort(), [1, 3]);
 
         const ticket = randomBytes(32).toString('hex');
-        const pedido = { nome: 'Cliente público', telefone_whatsapp: '(82) 99999-1234', servico_ids: [1, 3], ticket };
+        const pedido = { nome: 'Cliente', sobrenome: 'público', telefone_whatsapp: '82 999991234', servico_ids: [1, 3], ticket };
+        assert.equal((await entrarPublica({ ...pedido, sobrenome: '   ' })).status, 400);
+        assert.equal((await entrarPublica({ ...pedido, telefone_whatsapp: '82 899991234' })).status, 400);
         assert.equal((await entrarPublica({ ...pedido, servico_ids: [1, 1] })).status, 400);
         assert.equal((await entrarPublica({ ...pedido, servico_ids: [1, 2] })).status, 404);
         const respostas = await Promise.all([entrarPublica(pedido), entrarPublica(pedido)]);
         assert.deepEqual(respostas.map(resposta => resposta.status).sort(), [200, 201]);
         const [primeira, segunda] = await Promise.all(respostas.map(resposta => resposta.json()));
         assert.deepEqual(primeira, segunda);
-        const duplicada = await entrarPublica({ ...pedido, nome: 'Outro nome', ticket: randomBytes(32).toString('hex') });
+        const duplicada = await entrarPublica({ ...pedido, nome: 'Outro', ticket: randomBytes(32).toString('hex') });
         assert.equal(duplicada.status, 409);
         const consulta = await requisicao('/agendamentos/ticket', ticket);
         assert.equal(consulta.status, 200);
@@ -340,8 +345,9 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
             timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
         }).format(new Date());
         const fila = await requisicao('/agendamentos/fila/1/' + data, tokenA);
-        const clientes = (await fila.json()).filter(item => item.cliente_nome === pedido.nome);
+        const clientes = (await fila.json()).filter(item => item.cliente_nome === 'Cliente público');
         assert.equal(clientes.length, 1);
+        assert.equal(clientes[0].cliente_telefone, '82999991234');
         assert.equal(clientes[0].posicao_fila, primeira.posicao_fila);
         assert.deepEqual(clientes[0].servicos.map(item => [item.servico_id, item.cliente_pacote_id]), [[1, null], [3, null]]);
     });
@@ -550,12 +556,13 @@ test('fila e migração no MySQL', { skip: !bancoUrl && 'Configure TEST_MYSQL_UR
         }).format(new Date());
         const ontem = new Date(Date.parse(hoje) - 86400000).toISOString().slice(0, 10);
         const nome = 'Cliente recorrente';
-        const telefone = '11987651234';
+        const telefone = '+55 (11) 98765-1234';
         const [cliente] = await db.execute('INSERT INTO clientes (empresa_id, nome, telefone_whatsapp) VALUES (1, ?, ?)',
             [nome, telefone]);
         const balcao = { ...entrada, cliente_id: cliente.insertId, data_atendimento: hoje };
         const publica = () => entrarPublica({
-            nome, telefone_whatsapp: '+55' + telefone, servico_id: 1, ticket: randomBytes(32).toString('hex')
+            nome: 'Cliente', sobrenome: 'recorrente', telefone_whatsapp: '11 987651234',
+            servico_id: 1, ticket: randomBytes(32).toString('hex')
         });
 
         const anterior = await entrar({ ...balcao, data_atendimento: ontem });

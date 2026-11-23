@@ -9,14 +9,18 @@ import {
   signSelectionToken,
 } from "@/lib/auth";
 import { setAuthCookie } from "@/lib/cookies";
+import { limitRequest } from "@/lib/rate-limit";
 import { z } from "zod";
 
 const loginSchema = z.object({
-  email: z.string().email().max(254),
+  email: z.string().trim().email().max(254).toLowerCase(),
   senha: z.string().min(1),
 });
 
 export async function POST(request: Request) {
+  const limited = await limitRequest(request, "login");
+  if (limited) return limited;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -33,10 +37,11 @@ export async function POST(request: Request) {
   }
 
   const { email, senha } = parsed.data;
-  const normalizedEmail = email.trim().toLowerCase();
+  const accountLimited = await limitRequest(request, "login-account", email);
+  if (accountLimited) return accountLimited;
 
   const user = await db.query.users.findFirst({
-    where: eq(users.email, normalizedEmail),
+    where: eq(users.email, email),
   });
 
   const senhaValida = await safeVerifyPassword(senha, user?.passwordHash);
@@ -67,12 +72,12 @@ export async function POST(request: Request) {
 
   if (memberships.length === 1) {
     const [{ comercioId, cargo }] = memberships;
-    const token = signAccessToken({ userId: user.id, companyId: comercioId, role: cargo });
-    setAuthCookie(token);
+    const token = signAccessToken({ userId: user.id, companyId: comercioId, role: cargo, sessionVersion: user.sessionVersion });
+    await setAuthCookie(token);
     return NextResponse.json({ token, comercioId, cargo });
   }
 
-  const selectionToken = signSelectionToken({ userId: user.id });
+  const selectionToken = signSelectionToken({ userId: user.id, sessionVersion: user.sessionVersion });
   return NextResponse.json({
     tokenTemporario: selectionToken,
     comercios: memberships,

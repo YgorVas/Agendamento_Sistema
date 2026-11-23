@@ -16,13 +16,12 @@ import {
   companies,
   customers,
   services,
-  customerPackages,
-  servicePackages,
 } from "@/db/schema";
 import { requireAuth, ResponseError } from "@/lib/auth";
 import { generateTicket, hashTicket } from "@/lib/ticket";
 import { phoneVariants } from "@/lib/phone";
 import { isValidISODate, parseISODate } from "@/lib/date";
+import { debitPackageSession, lockUsablePackage } from "@/lib/package-sessions";
 import { z } from "zod";
 
 const itemSchema = z.object({
@@ -156,26 +155,10 @@ export async function POST(request: Request) {
       for (const item of servicos!) {
         if (!item.cliente_pacote_id) continue;
 
-        const [pkg] = await tx
-          .select({ id: customerPackages.id })
-          .from(customerPackages)
-          .innerJoin(
-            servicePackages,
-            eq(customerPackages.packageId, servicePackages.id)
-          )
-          .where(
-            and(
-              eq(customerPackages.id, item.cliente_pacote_id),
-              eq(customerPackages.customerId, cliente_id),
-              eq(servicePackages.companyId, auth.companyId),
-              eq(customerPackages.status, "ativo"),
-              sql`${customerPackages.remainingSessions} > 0`,
-              sql`${customerPackages.validUntil} >= ${sql.param(effectiveDate, customerPackages.validUntil)}`,
-              eq(servicePackages.serviceId, item.servico_id)
-            )
-          )
-          .for("update")
-          .limit(1);
+        const pkg = await lockUsablePackage(tx, auth.companyId, cliente_id, effectiveDate, {
+          servico_id: item.servico_id,
+          cliente_pacote_id: item.cliente_pacote_id,
+        });
 
         if (!pkg) {
           return { erro: "pacote" };
@@ -184,13 +167,7 @@ export async function POST(request: Request) {
 
       for (const item of servicos!) {
         if (!item.cliente_pacote_id) continue;
-        await tx
-          .update(customerPackages)
-          .set({
-            remainingSessions: sql`${customerPackages.remainingSessions} - 1`,
-            status: sql`CASE WHEN ${customerPackages.remainingSessions} = 1 THEN 'concluido'::package_status ELSE 'ativo'::package_status END`,
-          })
-          .where(eq(customerPackages.id, item.cliente_pacote_id));
+        await debitPackageSession(tx, item.cliente_pacote_id);
       }
 
       const maxResult = await tx

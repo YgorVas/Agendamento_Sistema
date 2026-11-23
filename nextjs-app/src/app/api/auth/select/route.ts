@@ -2,8 +2,8 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { eq, and } from "drizzle-orm";
-import { userCompanies, companies } from "@/db/schema";
-import { getBearerToken, signAccessToken, verifySelectionToken } from "@/lib/auth";
+import { userCompanies, companies, users } from "@/db/schema";
+import { getBearerToken, requireAuth, ResponseError, signAccessToken, verifySelectionToken, type SelectionPayload } from "@/lib/auth";
 import { setAuthCookie } from "@/lib/cookies";
 import { z } from "zod";
 
@@ -28,6 +28,22 @@ export async function POST(request: Request) {
     );
   }
 
+  return selectCompany(request, payload, true);
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const auth = await requireAuth(request);
+    return await selectCompany(request, auth, false);
+  } catch (err) {
+    if (err instanceof ResponseError) {
+      return NextResponse.json({ erro: err.message }, { status: err.status });
+    }
+    throw err;
+  }
+}
+
+async function selectCompany(request: Request, payload: SelectionPayload, includeToken: boolean) {
   let body: unknown;
   try {
     body = await request.json();
@@ -49,10 +65,12 @@ export async function POST(request: Request) {
     .select({ role: userCompanies.role })
     .from(userCompanies)
     .innerJoin(companies, eq(userCompanies.companyId, companies.id))
+    .innerJoin(users, eq(userCompanies.userId, users.id))
     .where(
       and(
         eq(userCompanies.userId, payload.userId),
         eq(userCompanies.companyId, comercioId),
+        eq(users.sessionVersion, payload.sessionVersion ?? 0),
         eq(companies.active, true)
       )
     )
@@ -69,11 +87,12 @@ export async function POST(request: Request) {
     userId: payload.userId,
     companyId: comercioId,
     role: membership.role,
+    sessionVersion: payload.sessionVersion,
   });
-  setAuthCookie(accessToken);
+  await setAuthCookie(accessToken);
 
   return NextResponse.json({
-    token: accessToken,
+    ...(includeToken ? { token: accessToken } : {}),
     comercioId,
     cargo: membership.role,
   });

@@ -6,9 +6,9 @@ import { companies, services } from "@/db/schema";
 
 export async function GET(
   request: Request,
-  { params }: { params: { companyId: string } }
+  { params }: { params: Promise<{ companyId: string }> }
 ) {
-  const companyId = Number(params.companyId);
+  const companyId = Number((await params).companyId);
   if (!companyId || isNaN(companyId)) {
     return NextResponse.json(
       { erro: "Estabelecimento não encontrado." },

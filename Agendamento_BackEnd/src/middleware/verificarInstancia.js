@@ -25,6 +25,7 @@ async function verificarInstancia(req, res, next) {
                 codigo: 'INSTANCIA_INDISPONIVEL'
             });
         }
+        req.usuarioNome = vinculo.usuarioNome;
     } catch (erro) {
         console.error('Falha ao verificar o comércio:', erro.code ?? erro.name);
         return res.status(500).json({ erro: 'Erro interno ao verificar o comércio.' });

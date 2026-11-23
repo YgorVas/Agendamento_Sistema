@@ -6,10 +6,9 @@ import { customers, companies } from "@/db/schema";
 import { requireAuth, ResponseError } from "@/lib/auth";
 import { phoneVariants } from "@/lib/phone";
 import { z } from "zod";
+import { clientRegistrationSchema, clientRegistrationError, fullNameFits } from "@/lib/client-registration";
 
-const clientSchema = z.object({
-  nome: z.string().min(1).max(100),
-  telefone_whatsapp: z.string().min(1).max(20),
+const clientSchema = clientRegistrationSchema.extend({
   email: z.string().max(100).optional(),
   observacoes: z.string().optional(),
 });
@@ -50,15 +49,14 @@ export async function POST(request: Request) {
     }
 
     const parsed = clientSchema.safeParse(body);
-    if (!parsed.success) {
+    if (!parsed.success || !fullNameFits(parsed.data)) {
       return NextResponse.json(
-        { erro: "Informe nome e telefone válidos." },
+        { erro: clientRegistrationError },
         { status: 400 }
       );
     }
 
-    const { nome, telefone_whatsapp, email, observacoes } = parsed.data;
-    const phone = telefone_whatsapp.trim();
+    const { nome, sobrenome, telefone_whatsapp: phone, email, observacoes } = parsed.data;
 
     const result = await db.transaction(async (tx) => {
       await tx
@@ -86,7 +84,7 @@ export async function POST(request: Request) {
         .insert(customers)
         .values({
           companyId: auth.companyId,
-          name: nome.trim(),
+          name: `${nome} ${sobrenome}`,
           phone,
           email: email || null,
           notes: observacoes || null,

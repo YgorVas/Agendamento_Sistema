@@ -21,8 +21,9 @@ async function listarVinculosAtivos(usuarioId) {
 
 async function buscarVinculoAtivo(usuarioId, comercioId) {
     const [[vinculo]] = await pool.execute(
-        `SELECT uc.cargo
+        `SELECT uc.cargo, u.nome AS usuarioNome
          FROM usuario_comercios uc
+         JOIN usuarios u ON u.id = uc.usuario_id
          JOIN empresas e ON e.id = uc.empresa_id
          WHERE uc.usuario_id = ? AND uc.empresa_id = ? AND e.ativo = TRUE`,
         [usuarioId, comercioId]

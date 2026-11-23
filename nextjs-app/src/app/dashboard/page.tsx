@@ -1,21 +1,66 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, formatCurrency, todaySP } from "@/lib/api-client";
-import { LogOut, Plus, Trash2, RefreshCw } from "lucide-react";
+import { mobilePhoneHint, mobilePhonePattern } from "@/lib/phone";
+import { ChartColumn, Layers, ListOrdered, LogOut, Menu, Plus, RefreshCw, Trash2, UserPlus, Users } from "lucide-react";
+import type { Customer, Service, ServicePackage } from "@/db/schema";
+import { CustomersPanel } from "./customers-panel";
+import { CompanySwitcher, type CompanyMembership } from "./company-switcher";
+import { CustomerDataRequests } from "./customer-data-requests";
+
+type CatalogPackage = Omit<ServicePackage, "available">;
+type DashboardTab = "fila" | "balcao" | "clientes" | "catalogo" | "financeiro";
+type QueueService = {
+  servico_id: number;
+  servico_nome: string;
+  cliente_pacote_id: number | null;
+};
+type QueueEntry = {
+  id: number;
+  status: string;
+  posicao_fila: number;
+  cliente_id: number;
+  cliente_nome: string;
+  cliente_telefone: string;
+  duracao_minutos: number;
+  servicos: QueueService[];
+};
+type PackageSelection = { servico_id: number; cliente_pacote_id: number };
+type CustomerPackageOption = {
+  id: number;
+  serviceId: number;
+  packageName: string;
+  remainingSessions: number;
+  status: string;
+};
+
+const emptyServiceForm = { nome: "", descricao: "", duracao_minutos: "", preco: "" };
+const emptyPackageForm = {
+  nome: "",
+  descricao: "",
+  servico_id: "",
+  total_sessoes: "",
+  preco_total: "",
+  dias_validade: "30",
+};
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [tab, setTab] = useState<"fila" | "balcao" | "catalogo" | "financeiro">("fila");
+  const [tab, setTab] = useState<DashboardTab>("fila");
+  const [menuOpen, setMenuOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type?: "error" | "success" } | null>(null);
 
-  const [company, setCompany] = useState<any>(null);
-  const [clients, setClients] = useState<any[]>([]);
-  const [services, setServices] = useState<any[]>([]);
-  const [packages, setPackages] = useState<any[]>([]);
-  const [queue, setQueue] = useState<any[]>([]);
+  const [company, setCompany] = useState<CompanyMembership | null>(null);
+  const [companies, setCompanies] = useState<CompanyMembership[]>([]);
+  const [userName, setUserName] = useState("");
+  const [clients, setClients] = useState<Customer[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [services, setServices] = useState<Service[]>([]);
+  const [packages, setPackages] = useState<CatalogPackage[]>([]);
+  const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [lastTicket, setLastTicket] = useState<any>(null);
 
   const isManagement = useMemo(
@@ -32,6 +77,8 @@ export default function DashboardPage() {
     try {
       const auth = await apiFetch("/api/auth/companies");
       setCompany(auth.comercioAtual);
+      setCompanies(auth.comercios);
+      setUserName(auth.usuarioNome ?? "");
       const [c, s, p] = await Promise.all([
         apiFetch("/api/clients"),
         apiFetch("/api/services"),
@@ -73,16 +120,17 @@ export default function DashboardPage() {
     router.replace("/login");
   }
 
-  async function updateStatus(id: number, status: string) {
+  async function updateStatus(id: number, status: string, pacotes?: PackageSelection[]) {
+    if (status === "cancelado" && !window.confirm("Cancelar esta entrada na fila?")) return;
     setLoading(true);
     try {
       await apiFetch("/api/appointments/status", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status }),
+        body: JSON.stringify({ id, status, pacotes }),
       });
       await loadQueue();
-      show("Status atualizado", "success");
+      show(status === "cancelado" ? "Entrada cancelada" : "Status atualizado", "success");
     } catch (err: any) {
       show(err.message, "error");
     } finally {
@@ -95,21 +143,30 @@ export default function DashboardPage() {
 
   // Counter state
   const [customerId, setCustomerId] = useState("");
-  const [newCustomer, setNewCustomer] = useState({ nome: "", telefone: "" });
+  const [newCustomer, setNewCustomer] = useState({ nome: "", sobrenome: "", telefone: "" });
   const [serviceItems, setServiceItems] = useState<{ servico_id: string; cliente_pacote_id: string }[]>([
     { servico_id: "", cliente_pacote_id: "" },
   ]);
   const [customerPackages, setCustomerPackages] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!customerId || customerId === "new") {
-      setCustomerPackages([]);
-      return;
-    }
-    apiFetch(`/api/packages/customer/${customerId}`)
+    setCustomerPackages([]);
+    if (tab !== "balcao" || !customerId) return;
+
+    const controller = new AbortController();
+    apiFetch(`/api/packages/customer/${customerId}`, { signal: controller.signal })
       .then(setCustomerPackages)
-      .catch((err) => show(err.message, "error"));
-  }, [customerId]);
+      .catch((err) => {
+        if (!controller.signal.aborted) show(err.message, "error");
+      });
+    return () => controller.abort();
+  }, [customerId, tab]);
+
+  function clearRemovedPackage(id: number) {
+    setServiceItems((current) => current.map((item) =>
+      item.cliente_pacote_id === String(id) ? { ...item, cliente_pacote_id: "" } : item
+    ));
+  }
 
   function addServiceItem() {
     setServiceItems([...serviceItems, { servico_id: "", cliente_pacote_id: "" }]);
@@ -126,8 +183,9 @@ export default function DashboardPage() {
     setServiceItems(nextItems);
   }
 
-  async function submitCounter(e: React.FormEvent) {
+  async function submitCounter(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const registerOnly = (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "register-only";
     setLoading(true);
     try {
       let cid = Number(customerId);
@@ -137,11 +195,23 @@ export default function DashboardPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             nome: newCustomer.nome,
+            sobrenome: newCustomer.sobrenome,
             telefone_whatsapp: newCustomer.telefone,
           }),
         });
         cid = res.cliente_id;
-        setClients([...clients, res.cliente]);
+        setClients((current) => [
+          ...current.filter((client) => client.id !== res.cliente_id),
+          res.cliente,
+        ]);
+        if (registerOnly) {
+          setLastTicket(null);
+          setCustomerId(String(cid));
+          setNewCustomer({ nome: "", sobrenome: "", telefone: "" });
+          setSelectedClientId(cid);
+          show(res.mensagem, "success");
+          return;
+        }
       }
       const servicos = serviceItems
         .filter((i) => i.servico_id)
@@ -161,7 +231,7 @@ export default function DashboardPage() {
       setLastTicket(res);
       setServiceItems([{ servico_id: "", cliente_pacote_id: "" }]);
       setCustomerId("");
-      setNewCustomer({ nome: "", telefone: "" });
+      setNewCustomer({ nome: "", sobrenome: "", telefone: "" });
       await loadQueue();
       show(res.aviso_cliente, "success");
     } catch (err: any) {
@@ -172,50 +242,89 @@ export default function DashboardPage() {
   }
 
   // Catalog state
-  const [serviceForm, setServiceForm] = useState({ nome: "", descricao: "", duracao_minutos: "", preco: "" });
-  const [packageForm, setPackageForm] = useState({
-    nome: "",
-    descricao: "",
-    servico_id: "",
-    total_sessoes: "",
-    preco_total: "",
-    dias_validade: "30",
-  });
-  const [assignForm, setAssignForm] = useState({ cliente_id: "", pacote_id: "" });
+  const [serviceForm, setServiceForm] = useState(emptyServiceForm);
+  const [packageForm, setPackageForm] = useState(emptyPackageForm);
+  const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
+  const [editingPackageId, setEditingPackageId] = useState<number | null>(null);
+  const [savingCatalog, setSavingCatalog] = useState(false);
+  const serviceNameInput = useRef<HTMLInputElement>(null);
+  const packageNameInput = useRef<HTMLInputElement>(null);
 
-  async function createService(e: React.FormEvent) {
+  function editService(service: Service) {
+    setEditingServiceId(service.id);
+    setServiceForm({
+      nome: service.name,
+      descricao: service.description ?? "",
+      duracao_minutos: String(service.durationMinutes),
+      preco: service.price,
+    });
+    serviceNameInput.current?.focus();
+  }
+
+  function resetServiceForm() {
+    setEditingServiceId(null);
+    setServiceForm(emptyServiceForm);
+  }
+
+  function editPackage(pkg: CatalogPackage) {
+    setEditingPackageId(pkg.id);
+    setPackageForm({
+      nome: pkg.name,
+      descricao: pkg.description ?? "",
+      servico_id: String(pkg.serviceId),
+      total_sessoes: String(pkg.totalSessions),
+      preco_total: pkg.totalPrice,
+      dias_validade: String(pkg.validityDays),
+    });
+    packageNameInput.current?.focus();
+  }
+
+  function resetPackageForm() {
+    setEditingPackageId(null);
+    setPackageForm(emptyPackageForm);
+  }
+
+  async function saveService(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
+    setSavingCatalog(true);
     try {
-      await apiFetch("/api/services", {
-        method: "POST",
+      const saved = await apiFetch("/api/services", {
+        method: editingServiceId === null ? "POST" : "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: editingServiceId ?? undefined,
           nome: serviceForm.nome,
           descricao: serviceForm.descricao,
           duracao_minutos: Number(serviceForm.duracao_minutos),
           preco: Number(serviceForm.preco),
         }),
       });
-      setServiceForm({ nome: "", descricao: "", duracao_minutos: "", preco: "" });
-      const s = await apiFetch("/api/services");
-      setServices(s);
-      show("Serviço cadastrado", "success");
+      resetServiceForm();
+      if (editingServiceId === null) {
+        setServices(await apiFetch("/api/services"));
+        show("Serviço cadastrado", "success");
+      } else {
+        setServices((current) => current
+          .map((service) => service.id === editingServiceId ? saved as Service : service)
+          .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
+        show("Serviço atualizado", "success");
+      }
     } catch (err: any) {
       show(err.message, "error");
     } finally {
-      setLoading(false);
+      setSavingCatalog(false);
     }
   }
 
-  async function createPackage(e: React.FormEvent) {
+  async function savePackage(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
+    setSavingCatalog(true);
     try {
-      await apiFetch("/api/packages", {
-        method: "POST",
+      const saved = await apiFetch("/api/packages", {
+        method: editingPackageId === null ? "POST" : "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: editingPackageId ?? undefined,
           nome: packageForm.nome,
           descricao: packageForm.descricao,
           servico_id: Number(packageForm.servico_id),
@@ -224,42 +333,18 @@ export default function DashboardPage() {
           dias_validade: Number(packageForm.dias_validade),
         }),
       });
-      setPackageForm({
-        nome: "",
-        descricao: "",
-        servico_id: "",
-        total_sessoes: "",
-        preco_total: "",
-        dias_validade: "30",
-      });
-      const p = await apiFetch("/api/packages");
-      setPackages(p);
-      show("Pacote cadastrado", "success");
+      resetPackageForm();
+      if (editingPackageId === null) {
+        setPackages(await apiFetch("/api/packages"));
+        show("Pacote cadastrado", "success");
+      } else {
+        setPackages((current) => current.map((pkg) => pkg.id === editingPackageId ? saved as CatalogPackage : pkg));
+        show("Pacote atualizado", "success");
+      }
     } catch (err: any) {
       show(err.message, "error");
     } finally {
-      setLoading(false);
-    }
-  }
-
-  async function assignPackage(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      await apiFetch("/api/packages/sell", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cliente_id: Number(assignForm.cliente_id),
-          pacote_id: Number(assignForm.pacote_id),
-        }),
-      });
-      setAssignForm({ cliente_id: "", pacote_id: "" });
-      show("Pacote atribuído", "success");
-    } catch (err: any) {
-      show(err.message, "error");
-    } finally {
-      setLoading(false);
+      setSavingCatalog(false);
     }
   }
 
@@ -284,37 +369,33 @@ export default function DashboardPage() {
     if (tab === "financeiro") loadFinance();
   }, [tab]);
 
-  function chartGradient(servicos: any[]) {
-    const positive = servicos.filter((s) => Number(s.valor) > 0);
-    if (positive.length === 0) return "";
-    const total = positive.reduce((sum, s) => sum + Number(s.valor), 0);
-    const colors = ["#047857", "#2563eb", "#7c3aed", "#c2410c", "#be185d", "#0e7490"];
-    let acc = 0;
-    const stops = positive.map((s, i) => {
-      const start = (acc / total) * 100;
-      acc += Number(s.valor);
-      const end = (acc / total) * 100;
-      return `${colors[i % colors.length]} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
-    });
-    return `conic-gradient(${stops.join(", ")})`;
-  }
-
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="bg-slate-900 text-white sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div>
-            <h1 className="font-bold text-lg">SistemaAgendamento</h1>
-            <p className="text-xs text-slate-300">
-              {company?.nomeFantasia ?? "..."} · {company?.cargo}
-            </p>
+      <header className="border-b border-brand-500 bg-brand-600 text-white">
+        <div className="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="lg:col-start-2 lg:text-center">
+            <h1 className="text-3xl font-bold tracking-tight">Agendai</h1>
+            {company && (
+              <p className="mt-1 flex items-center gap-2 text-sm text-brand-50 lg:justify-center">
+                <span className="min-w-0 break-words">{userName}</span>
+                <span aria-hidden="true" className="shrink-0 text-brand-500">•</span>
+                <span className="min-w-0 break-words">{company.nomeFantasia}</span>
+              </p>
+            )}
           </div>
-          <button
-            onClick={logout}
-            className="flex items-center gap-2 rounded-lg border border-slate-500 px-3 py-2 text-sm hover:bg-slate-800"
-          >
-            <LogOut size={16} /> Sair
-          </button>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={logout}
+              aria-label="Sair"
+              title="Sair"
+              className="flex items-center gap-2 rounded-lg border border-brand-500 px-3 py-2 text-sm hover:bg-brand-700"
+            >
+              <LogOut size={16} aria-hidden="true" />
+              <span className="hidden sm:inline">Sair</span>
+            </button>
+            {company && <CompanySwitcher companies={companies} currentCompany={company} />}
+          </div>
         </div>
       </header>
 
@@ -328,29 +409,49 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4">
-        <nav className="mb-6 grid grid-cols-2 sm:flex gap-2 rounded-2xl border bg-white p-1.5 shadow-sm">
-          {[
-            { key: "fila", label: "Fila" },
-            { key: "balcao", label: "Registrar cliente" },
-            ...(isManagement
-              ? [
-                  { key: "catalogo", label: "Serviços e pacotes" },
-                  { key: "financeiro", label: "Financeiro" },
-                ]
-              : []),
-          ].map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key as any)}
-              className={`rounded-xl px-4 py-2 text-sm font-semibold ${
-                tab === t.key ? "bg-slate-900 text-white" : "hover:bg-slate-50"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
+      <div className="mx-auto grid w-full max-w-7xl flex-1 content-start gap-4 p-4 md:grid-cols-[13rem_minmax(0,1fr)] lg:gap-6">
+        <aside className="self-start rounded-2xl border border-brand-100 bg-white p-2 shadow-sm md:sticky md:top-4">
+          <button
+            type="button"
+            aria-controls="menu-painel"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-brand-600 hover:bg-brand-50 md:hidden"
+          >
+            <Menu size={18} aria-hidden="true" /> Menu do painel
+          </button>
+          <nav id="menu-painel" aria-label="Menu do painel" className={`${menuOpen ? "mt-2 flex" : "hidden"} flex-col gap-1 md:mt-0 md:flex`}>
+            {([
+              { key: "fila", label: "Fila", icon: ListOrdered },
+              { key: "balcao", label: "Registrar cliente", icon: UserPlus },
+              ...(isManagement
+                ? ([
+                    { key: "clientes", label: "Clientes", icon: Users },
+                    { key: "catalogo", label: "Serviços e pacotes", icon: Layers },
+                    { key: "financeiro", label: "Financeiro", icon: ChartColumn },
+                  ] as const)
+                : []),
+            ] satisfies { key: DashboardTab; label: string; icon: typeof Menu }[]).map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                aria-current={tab === key ? "page" : undefined}
+                onClick={() => {
+                  setTab(key);
+                  setMenuOpen(false);
+                  if (menuOpen) document.getElementById("conteudo-painel")?.focus();
+                }}
+                className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-brand-600 ${
+                  tab === key ? "bg-brand-500" : "hover:bg-brand-50"
+                }`}
+              >
+                <Icon size={18} aria-hidden="true" className="shrink-0" /> {label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <main id="conteudo-painel" tabIndex={-1} className="min-w-0">
 
         {tab === "fila" && (
           <div className="space-y-6">
@@ -364,7 +465,20 @@ export default function DashboardPage() {
             </a>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+              <form
+                key={inProgress?.id ?? "idle"}
+                className="bg-white rounded-2xl border shadow-sm overflow-hidden"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!inProgress || loading) return;
+                  const values = new FormData(event.currentTarget);
+                  const selections = inProgress.servicos.flatMap((service) => {
+                    const id = Number(values.get(`pacote-${service.servico_id}`));
+                    return id ? [{ servico_id: service.servico_id, cliente_pacote_id: id }] : [];
+                  });
+                  void updateStatus(inProgress.id, "concluido", selections);
+                }}
+              >
                 <div className="p-4 border-b bg-emerald-50 flex justify-between items-center">
                   <span className="text-sm font-bold uppercase text-emerald-700">Em Atendimento</span>
                   <span className="bg-emerald-600 text-white text-xs font-bold px-2 py-1 rounded-lg">
@@ -373,12 +487,10 @@ export default function DashboardPage() {
                 </div>
                 <div className="p-6 min-h-[120px] flex items-center justify-center">
                   {inProgress ? (
-                    <div>
+                    <div className="w-full">
                       <div className="text-xl font-bold">{inProgress.cliente_nome}</div>
                       <div className="text-xs text-slate-500">{inProgress.cliente_telefone}</div>
-                      <div className="text-xs font-medium mt-1">
-                        {inProgress.servicos.map((s: any) => s.servico_nome).join(" · ")}
-                      </div>
+                      <AttendancePackages entry={inProgress} disabled={loading} />
                     </div>
                   ) : (
                     <p className="text-slate-400 text-sm">Nenhum cliente em atendimento.</p>
@@ -387,13 +499,13 @@ export default function DashboardPage() {
                 <div className="p-4 bg-slate-50 border-t text-right">
                   <button
                     disabled={!inProgress || loading}
-                    onClick={() => updateStatus(inProgress.id, "concluido")}
+                    type="submit"
                     className="bg-emerald-600 text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
                   >
                     Concluir Atendimento
                   </button>
                 </div>
-              </div>
+              </form>
 
               <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
                 <div className="p-4 border-b bg-sky-50 flex justify-between items-center">
@@ -408,17 +520,26 @@ export default function DashboardPage() {
                       <div className="text-xl font-bold">{next.cliente_nome}</div>
                       <div className="text-xs text-slate-500">{next.cliente_telefone}</div>
                       <div className="text-xs font-medium mt-1">
-                        {next.servicos.map((s: any) => s.servico_nome).join(" · ")}
+                        {next.servicos.map((s) => s.servico_nome).join(" · ")}
                       </div>
                     </div>
                   ) : (
                     <p className="text-slate-400 text-sm">Não há clientes aguardando.</p>
                   )}
                 </div>
-                <div className="p-4 bg-slate-50 border-t text-right">
+                <div className="p-4 bg-slate-50 border-t flex flex-wrap justify-end gap-2">
+                  {next && (
+                    <button
+                      disabled={loading}
+                      onClick={() => updateStatus(next.id, "cancelado")}
+                      className="px-4 py-2 rounded-xl text-sm font-semibold text-rose-700 border border-rose-200 hover:bg-rose-50 disabled:opacity-50"
+                    >
+                      Cancelar entrada
+                    </button>
+                  )}
                   <button
                     disabled={!next || !!inProgress || loading}
-                    onClick={() => updateStatus(next.id, "confirmado")}
+                    onClick={() => next && updateStatus(next.id, "confirmado")}
                     className="bg-sky-600 text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-sky-700 disabled:opacity-50"
                   >
                     Chamar Próximo
@@ -455,7 +576,7 @@ export default function DashboardPage() {
                         </td>
                         <td className="px-4 py-3">
                           <ul className="text-xs space-y-1">
-                            {item.servicos.map((s: any) => (
+                            {item.servicos.map((s) => (
                               <li key={s.servico_id}>
                                 {s.servico_nome}
                                 {s.cliente_pacote_id && (
@@ -473,10 +594,11 @@ export default function DashboardPage() {
                         <td className="px-4 py-3 text-right">
                           {item.status === "agendado" && (
                             <button
+                              disabled={loading}
                               onClick={() => updateStatus(item.id, "cancelado")}
-                              className="text-xs text-rose-600 hover:text-rose-800 font-semibold"
+                              className="text-xs text-rose-600 hover:text-rose-800 font-semibold disabled:opacity-50"
                             >
-                              Cancelar
+                              Cancelar entrada
                             </button>
                           )}
                         </td>
@@ -515,7 +637,6 @@ export default function DashboardPage() {
                   value={customerId}
                   onChange={(e) => setCustomerId(e.target.value)}
                   className="w-full rounded-xl border p-2.5"
-                  required={!newCustomer.nome}
                 >
                   <option value="">Cadastrar novo cliente</option>
                   {clients.map((c) => (
@@ -528,14 +649,33 @@ export default function DashboardPage() {
               {customerId === "" && (
                 <>
                   <input
-                    placeholder="Nome completo"
+                    aria-label="Nome"
+                    placeholder="Nome"
+                    autoComplete="given-name"
+                    maxLength={100}
+                    pattern={".*\\S.*"}
                     value={newCustomer.nome}
                     onChange={(e) => setNewCustomer({ ...newCustomer, nome: e.target.value })}
                     className="w-full rounded-xl border p-2.5"
                     required
                   />
                   <input
-                    placeholder="WhatsApp"
+                    aria-label="Sobrenome"
+                    placeholder="Sobrenome"
+                    autoComplete="family-name"
+                    maxLength={100}
+                    pattern={".*\\S.*"}
+                    value={newCustomer.sobrenome}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, sobrenome: e.target.value })}
+                    className="w-full rounded-xl border p-2.5"
+                    required
+                  />
+                  <input
+                    aria-label="WhatsApp com DDD"
+                    placeholder="WhatsApp com DDD (82 988887777)"
+                    autoComplete="tel-national"
+                    title={mobilePhoneHint}
+                    pattern={mobilePhonePattern}
                     value={newCustomer.telefone}
                     onChange={(e) => setNewCustomer({ ...newCustomer, telefone: e.target.value })}
                     className="w-full rounded-xl border p-2.5"
@@ -602,173 +742,220 @@ export default function DashboardPage() {
                 </button>
               </div>
 
-              <button
-                disabled={loading}
-                className="w-full bg-brand-600 text-white py-3 rounded-xl font-bold hover:bg-brand-700 disabled:opacity-50"
-              >
-                {loading ? "Confirmando…" : "Confirmar Entrada na Fila"}
-              </button>
+              <div className="flex flex-col gap-2">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-brand-600 text-white py-3 rounded-xl font-bold hover:bg-brand-700 disabled:opacity-50"
+                >
+                  Confirmar Entrada na Fila
+                </button>
+                {isManagement && customerId === "" && (
+                  <button
+                    type="submit"
+                    value="register-only"
+                    formNoValidate
+                    disabled={loading}
+                    className="w-full rounded-xl border border-brand-600 py-3 font-bold text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                  >
+                    Cadastrar sem entrar na fila
+                  </button>
+                )}
+              </div>
             </form>
+          </div>
+        )}
+
+        {tab === "clientes" && isManagement && (
+          <div className="space-y-6">
+            <CustomersPanel
+              clients={clients}
+              packages={packages}
+              selectedId={selectedClientId}
+              onSelect={setSelectedClientId}
+              onPackageRemoved={clearRemovedPackage}
+            />
+            {company?.cargo === "ADMIN" && (
+              <CustomerDataRequests key={company.comercioId} customer={clients.find((client) => client.id === selectedClientId)} />
+            )}
           </div>
         )}
 
         {tab === "catalogo" && isManagement && (
           <div className="space-y-8">
-            <section className="bg-white rounded-2xl border shadow-sm p-6">
-              <h3 className="text-lg font-semibold mb-4">Atribuir pacote a cliente</h3>
-              <form onSubmit={assignPackage} className="grid sm:grid-cols-3 gap-4">
-                <select
-                  value={assignForm.cliente_id}
-                  onChange={(e) => setAssignForm({ ...assignForm, cliente_id: e.target.value })}
-                  className="rounded-xl border p-2.5"
-                  required
-                >
-                  <option value="">Cliente</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={assignForm.pacote_id}
-                  onChange={(e) => setAssignForm({ ...assignForm, pacote_id: e.target.value })}
-                  className="rounded-xl border p-2.5"
-                  required
-                >
-                  <option value="">Pacote</option>
-                  {packages.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  disabled={loading}
-                  className="bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700 disabled:opacity-50"
-                >
-                  Atribuir pacote
-                </button>
-              </form>
-            </section>
-
             <div className="grid lg:grid-cols-2 gap-6">
               <section className="bg-white rounded-2xl border shadow-sm p-6">
-                <h3 className="text-lg font-semibold mb-4">Novo serviço</h3>
-                <form onSubmit={createService} className="space-y-3">
-                  <input
-                    placeholder="Nome"
-                    value={serviceForm.nome}
-                    onChange={(e) => setServiceForm({ ...serviceForm, nome: e.target.value })}
-                    className="w-full rounded-xl border p-2.5"
-                    required
-                  />
-                  <input
-                    placeholder="Descrição"
-                    value={serviceForm.descricao}
-                    onChange={(e) => setServiceForm({ ...serviceForm, descricao: e.target.value })}
-                    className="w-full rounded-xl border p-2.5"
-                  />
-                  <div className="grid grid-cols-2 gap-3">
+                <h3 className="text-lg font-semibold mb-4">{editingServiceId === null ? "Novo serviço" : "Editar serviço"}</h3>
+                <form onSubmit={saveService}>
+                  <fieldset disabled={loading || savingCatalog} className="min-w-0 space-y-3">
                     <input
-                      placeholder="Duração (min)"
-                      type="number"
-                      value={serviceForm.duracao_minutos}
-                      onChange={(e) => setServiceForm({ ...serviceForm, duracao_minutos: e.target.value })}
+                      ref={serviceNameInput}
+                      aria-label="Nome do serviço"
+                      placeholder="Nome"
+                      maxLength={100}
+                      value={serviceForm.nome}
+                      onChange={(e) => setServiceForm({ ...serviceForm, nome: e.target.value })}
                       className="w-full rounded-xl border p-2.5"
                       required
                     />
                     <input
-                      placeholder="Preço (R$)"
-                      type="number"
-                      step="0.01"
-                      value={serviceForm.preco}
-                      onChange={(e) => setServiceForm({ ...serviceForm, preco: e.target.value })}
+                      aria-label="Descrição do serviço"
+                      placeholder="Descrição"
+                      maxLength={2000}
+                      value={serviceForm.descricao}
+                      onChange={(e) => setServiceForm({ ...serviceForm, descricao: e.target.value })}
                       className="w-full rounded-xl border p-2.5"
-                      required
                     />
-                  </div>
-                  <button
-                    disabled={loading}
-                    className="bg-brand-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-brand-700 disabled:opacity-50"
-                  >
-                    Cadastrar serviço
-                  </button>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="text-sm">
+                        Duração (min)
+                        <input
+                          type="number"
+                          min="1"
+                          value={serviceForm.duracao_minutos}
+                          onChange={(e) => setServiceForm({ ...serviceForm, duracao_minutos: e.target.value })}
+                          className="w-full rounded-xl border p-2.5"
+                          required
+                        />
+                      </label>
+                      <label className="text-sm">
+                        Preço (R$)
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={serviceForm.preco}
+                          onChange={(e) => setServiceForm({ ...serviceForm, preco: e.target.value })}
+                          className="w-full rounded-xl border p-2.5"
+                          required
+                        />
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button className="bg-brand-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-brand-700 disabled:opacity-50">
+                        {editingServiceId === null ? "Cadastrar serviço" : "Salvar serviço"}
+                      </button>
+                      {editingServiceId !== null && (
+                        <button type="button" onClick={resetServiceForm} className="rounded-xl border px-4 py-2 font-semibold hover:bg-slate-50 disabled:opacity-50">
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
+                  </fieldset>
                 </form>
                 <h4 className="mt-6 text-sm font-semibold text-slate-500 uppercase">Cadastrados</h4>
                 <ul className="mt-2 space-y-2 text-sm">
                   {services.map((s) => (
-                    <li key={s.id} className="flex justify-between border-b py-2">
-                      <span>{s.name}</span>
-                      <span className="font-semibold text-brand-600">{formatCurrency(s.price)}</span>
+                    <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-2">
+                      <span className="min-w-0 break-words">{s.name}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="font-semibold text-brand-600">{formatCurrency(s.price)}</span>
+                        <button type="button" aria-label={`Editar serviço ${s.name}`} disabled={loading || savingCatalog} onClick={() => editService(s)} className="rounded-lg border px-3 py-1 font-semibold hover:bg-slate-50 disabled:opacity-50">
+                          Editar
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
               </section>
 
               <section className="bg-white rounded-2xl border shadow-sm p-6">
-                <h3 className="text-lg font-semibold mb-4">Novo modelo de pacote</h3>
-                <form onSubmit={createPackage} className="space-y-3">
-                  <select
-                    value={packageForm.servico_id}
-                    onChange={(e) => setPackageForm({ ...packageForm, servico_id: e.target.value })}
-                    className="w-full rounded-xl border p-2.5"
-                    required
-                  >
-                    <option value="">Serviço do pacote</option>
-                    {services.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    placeholder="Nome"
-                    value={packageForm.nome}
-                    onChange={(e) => setPackageForm({ ...packageForm, nome: e.target.value })}
-                    className="w-full rounded-xl border p-2.5"
-                    required
-                  />
-                  <div className="grid grid-cols-3 gap-3">
+                <h3 className="text-lg font-semibold mb-4">{editingPackageId === null ? "Novo modelo de pacote" : "Editar modelo de pacote"}</h3>
+                <form onSubmit={savePackage}>
+                  <fieldset disabled={loading || savingCatalog} className="min-w-0 space-y-3">
+                    <label className="block text-sm">
+                      Serviço do pacote
+                      <select
+                        value={packageForm.servico_id}
+                        onChange={(e) => setPackageForm({ ...packageForm, servico_id: e.target.value })}
+                        className="w-full rounded-xl border p-2.5"
+                        required
+                      >
+                        <option value="">Selecione um serviço</option>
+                        {services.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <input
-                      placeholder="Sessões"
-                      type="number"
-                      value={packageForm.total_sessoes}
-                      onChange={(e) => setPackageForm({ ...packageForm, total_sessoes: e.target.value })}
+                      ref={packageNameInput}
+                      aria-label="Nome do pacote"
+                      placeholder="Nome"
+                      maxLength={100}
+                      value={packageForm.nome}
+                      onChange={(e) => setPackageForm({ ...packageForm, nome: e.target.value })}
                       className="w-full rounded-xl border p-2.5"
                       required
                     />
                     <input
-                      placeholder="Validade (dias)"
-                      type="number"
-                      value={packageForm.dias_validade}
-                      onChange={(e) => setPackageForm({ ...packageForm, dias_validade: e.target.value })}
+                      aria-label="Descrição do pacote"
+                      placeholder="Descrição"
+                      maxLength={2000}
+                      value={packageForm.descricao}
+                      onChange={(e) => setPackageForm({ ...packageForm, descricao: e.target.value })}
                       className="w-full rounded-xl border p-2.5"
-                      required
                     />
-                    <input
-                      placeholder="Preço total"
-                      type="number"
-                      step="0.01"
-                      value={packageForm.preco_total}
-                      onChange={(e) => setPackageForm({ ...packageForm, preco_total: e.target.value })}
-                      className="w-full rounded-xl border p-2.5"
-                      required
-                    />
-                  </div>
-                  <button
-                    disabled={loading}
-                    className="bg-brand-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-brand-700 disabled:opacity-50"
-                  >
-                    Cadastrar pacote
-                  </button>
+                    <div className="grid grid-cols-3 gap-3">
+                      <label className="text-sm">
+                        Sessões
+                        <input
+                          type="number"
+                          min="1"
+                          value={packageForm.total_sessoes}
+                          onChange={(e) => setPackageForm({ ...packageForm, total_sessoes: e.target.value })}
+                          className="w-full rounded-xl border p-2.5"
+                          required
+                        />
+                      </label>
+                      <label className="text-sm">
+                        Validade (dias)
+                        <input
+                          type="number"
+                          min="1"
+                          value={packageForm.dias_validade}
+                          onChange={(e) => setPackageForm({ ...packageForm, dias_validade: e.target.value })}
+                          className="w-full rounded-xl border p-2.5"
+                          required
+                        />
+                      </label>
+                      <label className="text-sm">
+                        Preço (R$)
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={packageForm.preco_total}
+                          onChange={(e) => setPackageForm({ ...packageForm, preco_total: e.target.value })}
+                          className="w-full rounded-xl border p-2.5"
+                          required
+                        />
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button className="bg-brand-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-brand-700 disabled:opacity-50">
+                        {editingPackageId === null ? "Cadastrar pacote" : "Salvar pacote"}
+                      </button>
+                      {editingPackageId !== null && (
+                        <button type="button" onClick={resetPackageForm} className="rounded-xl border px-4 py-2 font-semibold hover:bg-slate-50 disabled:opacity-50">
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
+                  </fieldset>
                 </form>
                 <h4 className="mt-6 text-sm font-semibold text-slate-500 uppercase">Modelos</h4>
                 <ul className="mt-2 space-y-2 text-sm">
                   {packages.map((p) => (
-                    <li key={p.id} className="flex justify-between border-b py-2">
-                      <span>{p.name}</span>
-                      <span className="font-semibold text-brand-600">{formatCurrency(p.totalPrice)}</span>
+                    <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-2">
+                      <span className="min-w-0 break-words">{p.name}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="font-semibold text-brand-600">{formatCurrency(p.totalPrice)}</span>
+                        <button type="button" aria-label={`Editar pacote ${p.name}`} disabled={loading || savingCatalog} onClick={() => editPackage(p)} className="rounded-lg border px-3 py-1 font-semibold hover:bg-slate-50 disabled:opacity-50">
+                          Editar
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -838,20 +1025,7 @@ export default function DashboardPage() {
               </div>
 
               {period.servicos.length > 0 && (
-                <div className="grid sm:grid-cols-[auto_1fr] gap-6 items-center">
-                  <div
-                    className="w-40 h-40 rounded-full mx-auto"
-                    style={{ background: chartGradient(period.servicos) }}
-                  />
-                  <ul className="divide-y text-sm">
-                    {period.servicos.map((s: any) => (
-                      <li key={s.nome} className="py-2 flex justify-between">
-                        <span>{s.nome}</span>
-                        <span className="font-semibold">{formatCurrency(s.valor)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <FinanceServiceChart services={period.servicos} />
               )}
 
               <div className="mt-6 overflow-x-auto">
@@ -881,7 +1055,119 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-      </main>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+const financeChartColors = ["#047857", "#2563eb", "#7c3aed", "#c2410c", "#be185d", "#0e7490"];
+
+function FinanceServiceChart({ services }: { services: { nome: string; valor: string }[] }) {
+  const total = services.reduce((sum, { valor }) => sum + Math.max(0, Number(valor)), 0);
+  const stops: string[] = [];
+  let accumulated = 0;
+  const legend = services.map((service) => {
+    const amount = Number(service.valor);
+    if (amount <= 0) return { ...service, color: null };
+
+    const index = stops.length;
+    const color = financeChartColors[index] ?? `hsl(${(index * 137.508) % 360} 64% 44%)`;
+    const start = (accumulated / total) * 100;
+    accumulated += amount;
+    stops.push(`${color} ${start}% ${(accumulated / total) * 100}%`);
+    return { ...service, color };
+  });
+
+  return (
+    <div className={stops.length ? "grid sm:grid-cols-[auto_1fr] gap-6 items-center" : undefined}>
+      {stops.length > 0 && (
+        <div
+          aria-hidden="true"
+          className="w-40 h-40 rounded-full mx-auto"
+          style={{ background: `conic-gradient(${stops.join(", ")})` }}
+        />
+      )}
+      <ul aria-label="Valores por serviço" className="divide-y text-sm">
+        {legend.map(({ nome, valor, color }) => (
+          <li key={nome} className="flex items-center gap-2 py-2">
+            <span
+              aria-hidden="true"
+              className="h-3 w-3 shrink-0 rounded-full"
+              style={{ backgroundColor: color ?? "#cbd5e1" }}
+            />
+            <span className="min-w-0 flex-1 break-words">{nome}</span>
+            <span className="shrink-0 font-semibold tabular-nums">{formatCurrency(valor)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function AttendancePackages({ entry, disabled }: { entry: QueueEntry; disabled: boolean }) {
+  const [packages, setPackages] = useState<CustomerPackageOption[]>([]);
+  const [error, setError] = useState(false);
+  const [pending, setPending] = useState(true);
+  const [attempt, setAttempt] = useState(0);
+  const hasUncoveredService = entry.servicos.some((service) => service.cliente_pacote_id === null);
+
+  useEffect(() => {
+    if (!hasUncoveredService) return;
+    const controller = new AbortController();
+    setPending(true);
+    setError(false);
+    apiFetch(`/api/packages/customer/${entry.cliente_id}`, { signal: controller.signal })
+      .then((rows: CustomerPackageOption[]) => {
+        if (!controller.signal.aborted) {
+          setPackages(rows.filter((pkg) => pkg.status === "ativo" && pkg.remainingSessions > 0));
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setPending(false);
+      });
+    return () => controller.abort();
+  }, [entry.cliente_id, hasUncoveredService, attempt]);
+
+  return (
+    <div className="mt-3 space-y-2 text-sm">
+      {entry.servicos.map((service) => {
+        const options = packages.filter((pkg) => pkg.serviceId === service.servico_id);
+        if (service.cliente_pacote_id !== null) {
+          return <p key={service.servico_id}>{service.servico_nome} · Pacote registrado</p>;
+        }
+        if (!options.length) return <p key={service.servico_id}>{service.servico_nome}</p>;
+        return (
+          <label key={service.servico_id} className="block font-medium">
+            {service.servico_nome}
+            <select
+              name={`pacote-${service.servico_id}`}
+              className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
+              disabled={disabled}
+            >
+              <option value="">Sem pacote</option>
+              {options.map((pkg) => (
+                <option key={pkg.id} value={pkg.id}>
+                  {pkg.packageName} ({pkg.remainingSessions} {pkg.remainingSessions === 1 ? "sessão restante" : "sessões restantes"})
+                </option>
+              ))}
+            </select>
+          </label>
+        );
+      })}
+      {hasUncoveredService && pending && <p role="status">Consultando pacotes…</p>}
+      {error && (
+        <button
+          type="button"
+          className="text-rose-700 underline"
+          onClick={() => setAttempt((current) => current + 1)}
+        >
+          Falha ao consultar pacotes. Tentar novamente
+        </button>
+      )}
     </div>
   );
 }

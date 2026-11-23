@@ -13,11 +13,18 @@ import {
   serviceRecords,
 } from "@/db/schema";
 import { requireAuth, ResponseError } from "@/lib/auth";
+import { cancelAppointment } from "@/lib/cancel-appointment";
+import { parseISODate, todaySPString } from "@/lib/date";
+import { debitPackageSession, lockUsablePackage } from "@/lib/package-sessions";
 import { z } from "zod";
 
 const statusSchema = z.object({
   id: z.number().int().positive(),
   status: z.enum(["confirmado", "concluido", "cancelado"]),
+  pacotes: z.array(z.object({
+    servico_id: z.number().int().positive().max(2147483647),
+    cliente_pacote_id: z.number().int().positive().max(2147483647),
+  })).optional(),
 });
 
 const activeStatuses: Array<"agendado" | "confirmado"> = [
@@ -45,7 +52,13 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const { id, status } = parsed.data;
+    const { id, status, pacotes = [] } = parsed.data;
+    if (
+      pacotes.length > 0 &&
+      (status !== "concluido" || new Set(pacotes.map((item) => item.servico_id)).size !== pacotes.length)
+    ) {
+      return NextResponse.json({ erro: "Informe um pacote por serviço ao concluir o atendimento." }, { status: 400 });
+    }
 
     const result = await db.transaction(async (tx) => {
       const [company] = await tx
@@ -77,6 +90,11 @@ export async function PATCH(request: Request) {
         return { erro: "transicao" };
       }
 
+      if (status === "cancelado") {
+        await cancelAppointment(tx, appointment);
+        return { mudou: true, data: appointment.attendanceDate };
+      }
+
       if (status === "confirmado") {
         const inProgress = await tx
           .select({ id: appointments.id })
@@ -96,32 +114,6 @@ export async function PATCH(request: Request) {
         }
       }
 
-      await tx
-        .update(appointments)
-        .set({ status })
-        .where(eq(appointments.id, id));
-
-      if (status === "cancelado" && appointment.status === "agendado") {
-        const items = await tx
-          .select({ customerPackageId: appointmentServices.customerPackageId })
-          .from(appointmentServices)
-          .where(eq(appointmentServices.appointmentId, id));
-
-        const packageIds = items
-          .map((i) => i.customerPackageId)
-          .filter((pid): pid is number => pid !== null);
-
-        for (const packageId of Array.from(new Set(packageIds))) {
-          await tx
-            .update(customerPackages)
-            .set({
-              remainingSessions: sql`${customerPackages.remainingSessions} + 1`,
-              status: sql`CASE WHEN ${customerPackages.status} = 'concluido' THEN 'ativo'::package_status ELSE ${customerPackages.status} END`,
-            })
-            .where(eq(customerPackages.id, packageId));
-        }
-      }
-
       if (status === "concluido") {
         const items = await tx
           .select({
@@ -131,6 +123,44 @@ export async function PATCH(request: Request) {
           .from(appointmentServices)
           .where(eq(appointmentServices.appointmentId, id))
           .orderBy(appointmentServices.serviceId);
+
+        if (!items.length && appointment.legacyServiceId !== null) {
+          items.push({
+            serviceId: appointment.legacyServiceId,
+            customerPackageId: appointment.legacyPackageId,
+          });
+        }
+
+        const completionDate = parseISODate(todaySPString());
+        if (pacotes.length && (appointment.status !== "confirmado" || appointment.position === null)) {
+          return { erro: "pacote" };
+        }
+        for (const selection of pacotes) {
+          const item = items.find((entry) => entry.serviceId === selection.servico_id);
+          if (!item || item.customerPackageId !== null || !await lockUsablePackage(
+            tx, auth.companyId, appointment.customerId, completionDate, selection
+          )) {
+            return { erro: "pacote" };
+          }
+        }
+
+        let legacyPackageId = appointment.legacyPackageId;
+        for (const selection of pacotes) {
+          const { servico_id: serviceId, cliente_pacote_id: customerPackageId } = selection;
+          await debitPackageSession(tx, customerPackageId);
+          await tx.insert(appointmentServices)
+            .values({ appointmentId: id, serviceId, customerPackageId })
+            .onConflictDoUpdate({
+              target: [appointmentServices.appointmentId, appointmentServices.serviceId],
+              set: { customerPackageId },
+            });
+          const item = items.find((entry) => entry.serviceId === serviceId)!;
+          item.customerPackageId = customerPackageId;
+          if (serviceId === appointment.legacyServiceId) legacyPackageId = customerPackageId;
+        }
+        if (legacyPackageId !== appointment.legacyPackageId) {
+          await tx.update(appointments).set({ legacyPackageId }).where(eq(appointments.id, id));
+        }
 
         const serviceIds = items.map((i) => i.serviceId);
         const serviceRows = await tx
@@ -165,13 +195,6 @@ export async function PATCH(request: Request) {
           .from(customers)
           .where(eq(customers.id, appointment.customerId));
 
-        const todaySP = new Intl.DateTimeFormat("sv-SE", {
-          timeZone: "America/Sao_Paulo",
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        }).format(new Date());
-        const completionDate = new Date(todaySP + "T00:00:00");
         const completedAt = new Date();
 
         let itemNumber = 1;
@@ -210,6 +233,7 @@ export async function PATCH(request: Request) {
         }
       }
 
+      await tx.update(appointments).set({ status }).where(eq(appointments.id, id));
       return { mudou: true, data: appointment.attendanceDate };
     });
 
@@ -228,6 +252,12 @@ export async function PATCH(request: Request) {
     if (result.erro === "atendimento") {
       return NextResponse.json(
         { erro: "Conclua o atendimento atual antes de chamar o próximo." },
+        { status: 409 }
+      );
+    }
+    if (result.erro === "pacote") {
+      return NextResponse.json(
+        { erro: "Não foi possível usar o pacote. Confira o serviço, a validade e o saldo antes de concluir." },
         { status: 409 }
       );
     }

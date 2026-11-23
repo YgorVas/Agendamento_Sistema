@@ -2,19 +2,25 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { companies, users, userCompanies } from "@/db/schema";
-import { hashPassword, signAccessToken } from "@/lib/auth";
+import { hashPassword, ResponseError, signAccessToken } from "@/lib/auth";
 import { setAuthCookie } from "@/lib/cookies";
+import { consumeCompanyInvite, newPasswordSchema, pilotTokenSchema } from "@/lib/pilot-tokens";
+import { limitRequest } from "@/lib/rate-limit";
 import { z } from "zod";
 
 const registerSchema = z.object({
-  empresa: z.string().min(1).max(100),
-  nome: z.string().min(1).max(100),
-  email: z.string().email().max(100),
+  empresa: z.string().trim().min(1).max(100),
+  nome: z.string().trim().min(1).max(100),
+  email: z.string().trim().email().max(100).toLowerCase(),
   telefone: z.string().min(1).max(20),
-  senha: z.string().min(8),
+  senha: newPasswordSchema,
+  convite: pilotTokenSchema,
 });
 
 export async function POST(request: Request) {
+  const limited = await limitRequest(request, "registration");
+  if (limited) return limited;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -25,37 +31,43 @@ export async function POST(request: Request) {
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { erro: "Confira os dados e use uma senha de pelo menos 8 caracteres." },
+      { erro: "Confira os dados e o código do convite. A senha deve ter pelo menos 8 caracteres e até 72 bytes." },
       { status: 400 }
     );
   }
 
-  const { empresa, nome, email, telefone, senha } = parsed.data;
-  const normalizedEmail = email.trim().toLowerCase();
+  const { empresa, nome, email, telefone, senha, convite } = parsed.data;
   const normalizedPhone = telefone.replace(/\D/g, "");
 
   try {
     const result = await db.transaction(async (tx) => {
+      if (!await consumeCompanyInvite(tx, convite, email, "cadastro")) {
+        throw new ResponseError("Convite inválido, expirado ou emitido para outro e-mail.", 403);
+      }
       const passwordHash = await hashPassword(senha);
 
       const [company] = await tx
         .insert(companies)
         .values({
           name: empresa.trim(),
-          email: normalizedEmail,
+          email,
           phone: normalizedPhone,
           passwordHash,
         })
+        .onConflictDoNothing({ target: companies.email })
         .returning({ id: companies.id });
+      if (!company) throw new ResponseError("Este e-mail já está cadastrado.", 409);
 
       const [user] = await tx
         .insert(users)
         .values({
           name: nome.trim(),
-          email: normalizedEmail,
+          email,
           passwordHash,
         })
+        .onConflictDoNothing({ target: users.email })
         .returning({ id: users.id });
+      if (!user) throw new ResponseError("Este e-mail já está cadastrado.", 409);
 
       await tx.insert(userCompanies).values({
         userId: user.id,
@@ -67,20 +79,17 @@ export async function POST(request: Request) {
     });
 
     const token = signAccessToken(result);
-    setAuthCookie(token);
+    await setAuthCookie(token);
 
     return NextResponse.json(
       { mensagem: "Empresa e conta criadas com sucesso!", ...result },
       { status: 201 }
     );
-  } catch (err: any) {
-    if (err?.code === "23505") {
-      return NextResponse.json(
-        { erro: "Este e-mail já está cadastrado." },
-        { status: 409 }
-      );
+  } catch (err) {
+    if (err instanceof ResponseError) {
+      return NextResponse.json({ erro: err.message }, { status: err.status });
     }
-    console.error("Registration error:", err);
+    console.error("Registration error:", err instanceof Error ? err.name : "unknown error");
     return NextResponse.json(
       { erro: "Erro interno ao cadastrar." },
       { status: 500 }
